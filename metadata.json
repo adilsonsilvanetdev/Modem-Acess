@@ -1,0 +1,10 @@
+{
+  "name": "ModemScanner - Acesso Automático ao Roteador",
+  "description": "Aplicativo para escanear a etiqueta do modem, extrair IP, login e senha, e acessar automaticamente a página de configuração do roteador com preenchimento de credenciais.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
