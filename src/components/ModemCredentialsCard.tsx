@@ -16,6 +16,7 @@ import {
   Hash,
   ArrowRight,
   Sparkles,
+  RotateCcw,
 } from 'lucide-react';
 import { ScannedModem } from '../types';
 
@@ -23,12 +24,14 @@ interface ModemCredentialsCardProps {
   modem: ScannedModem;
   onUpdate: (updated: ScannedModem) => void;
   onOpenBrowser: () => void;
+  onFinishAccess?: () => void;
 }
 
 export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
   modem,
   onUpdate,
   onOpenBrowser,
+  onFinishAccess,
 }) => {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -307,6 +310,17 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
           <span>Abrir Navegador no Modem</span>
           <ArrowRight className="w-4 h-4 ml-1" />
         </button>
+
+        {onFinishAccess && (
+          <button
+            type="button"
+            onClick={onFinishAccess}
+            className="w-full py-2.5 px-4 bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 border border-slate-300 hover:border-red-200 font-bold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs mt-1"
+          >
+            <RotateCcw className="w-4 h-4 text-red-600" />
+            <span>Finalizar Acesso e Limpar Dados</span>
+          </button>
+        )}
       </div>
     </div>
   );

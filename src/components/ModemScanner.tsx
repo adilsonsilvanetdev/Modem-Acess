@@ -10,22 +10,22 @@ import {
   AlertCircle,
   Scan,
   Zap,
-  Tag,
   ArrowRight,
   ImageIcon,
   Video,
 } from 'lucide-react';
-import { SAMPLE_MODEMS } from '../data/sampleModems';
-import { RouterBrandPreset, ScannedModem } from '../types';
+import { ScannedModem } from '../types';
 
 interface ModemScannerProps {
   onScanSuccess: (modem: ScannedModem) => void;
   activeModem?: ScannedModem | null;
+  onFinishAccess?: () => void;
 }
 
 export const ModemScanner: React.FC<ModemScannerProps> = ({
   onScanSuccess,
   activeModem,
+  onFinishAccess,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,7 +42,6 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanStatusStep, setScanStatusStep] = useState<string>('');
   const [capturedImagePreview, setCapturedImagePreview] = useState<string | null>(null);
-  const [selectedPreset, setSelectedPreset] = useState<RouterBrandPreset | null>(null);
 
   // Stop Camera
   const stopCamera = () => {
@@ -249,10 +248,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
   }, []);
 
   // Process image with Gemini API
-  const processImageForModemData = async (
-    base64Data: string,
-    presetFallback?: RouterBrandPreset
-  ) => {
+  const processImageForModemData = async (base64Data: string) => {
     setIsScanning(true);
     setScanStatusStep('Iniciando análise de visão óptica da sua foto...');
 
@@ -266,7 +262,6 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         body: JSON.stringify({
           image: base64Data,
           mimeType: 'image/jpeg',
-          manualHint: presetFallback ? `Etiqueta padrão de ${presetFallback.brand} ${presetFallback.model}` : undefined,
         }),
       });
 
@@ -279,20 +274,20 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
 
       if (result.success && result.data) {
         const parsed = result.data;
-        const brandName = parsed.brand || (presetFallback ? presetFallback.brand : 'Roteador Identificado');
-        const modelName = parsed.model || (presetFallback ? presetFallback.model : 'Padrão');
+        const brandName = parsed.brand || 'Roteador Identificado';
+        const modelName = parsed.model || 'Padrão';
 
         const scannedModem: ScannedModem = {
           id: 'modem-' + Date.now(),
-          ip: parsed.ip || (presetFallback ? presetFallback.defaultIp : '192.168.1.1'),
-          username: parsed.username || (presetFallback ? presetFallback.defaultUser : 'admin'),
-          password: parsed.password || (presetFallback ? presetFallback.defaultPass : 'admin'),
+          ip: parsed.ip || '192.168.1.1',
+          username: parsed.username || 'admin',
+          password: parsed.password || 'admin',
           brand: brandName,
           model: modelName,
-          wifiSsid: parsed.wifiSsid || (presetFallback ? presetFallback.wifiSsid : (brandName ? `${brandName} Wi-Fi` : undefined)),
-          wifiPassword: parsed.wifiPassword || (presetFallback ? presetFallback.wifiPassword : undefined),
-          macAddress: parsed.macAddress || (presetFallback ? presetFallback.macAddress : undefined),
-          serialNumber: parsed.serialNumber || (presetFallback ? presetFallback.serialNumber : undefined),
+          wifiSsid: parsed.wifiSsid || (brandName ? `${brandName} Wi-Fi` : undefined),
+          wifiPassword: parsed.wifiPassword || undefined,
+          macAddress: parsed.macAddress || undefined,
+          serialNumber: parsed.serialNumber || undefined,
           scannedAt: new Date().toISOString(),
           confidence: parsed.confidence || 'alta',
           notes: parsed.notes,
@@ -311,33 +306,6 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     } catch (err: any) {
       console.warn('Erro ao processar imagem:', err);
 
-      // Only apply preset fallback if the user EXPLICITLY clicked a preset
-      if (presetFallback) {
-        setScanStatusStep('Carregando modelo pré-definido...');
-        const fallbackModem: ScannedModem = {
-          id: 'modem-' + Date.now(),
-          ip: presetFallback.defaultIp,
-          username: presetFallback.defaultUser,
-          password: presetFallback.defaultPass,
-          brand: presetFallback.brand,
-          model: presetFallback.model,
-          wifiSsid: presetFallback.wifiSsid,
-          wifiPassword: presetFallback.wifiPassword,
-          macAddress: presetFallback.macAddress,
-          serialNumber: presetFallback.serialNumber,
-          scannedAt: new Date().toISOString(),
-          confidence: 'alta',
-          notes: `Modelo selecionado: ${presetFallback.provider || presetFallback.brand}.`,
-          sourceImage: base64Data,
-        };
-        setTimeout(() => {
-          setIsScanning(false);
-          onScanSuccess(fallbackModem);
-        }, 500);
-        return;
-      }
-
-      // If user took a REAL photo and it failed, DO NOT inject a fake neighbor router!
       setIsScanning(false);
       setCameraError(
         'A foto não ficou nítida o suficiente para ler o IP e a senha. Aproxime mais a câmera da etiqueta com boa iluminação e tente novamente.'
@@ -380,58 +348,6 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     } catch (err) {
       console.warn('Erro ao otimizar foto:', err);
       setIsScanning(false);
-    }
-  };
-
-  // Handle Testing with Sample Modem Label
-  const handleSelectSample = (preset: RouterBrandPreset) => {
-    setSelectedPreset(preset);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = 800;
-    canvas.height = 450;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      // Draw label background
-      ctx.fillStyle = '#f8fafc';
-      ctx.fillRect(0, 0, 800, 450);
-
-      // Border and header
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 4;
-      ctx.strokeRect(10, 10, 780, 430);
-
-      // Header Brand
-      ctx.fillStyle = preset.themeColor;
-      ctx.fillRect(20, 20, 760, 50);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 24px monospace';
-      ctx.fillText(preset.logoText + ' - ' + preset.model, 35, 55);
-
-      // Label text
-      ctx.fillStyle = '#0f172a';
-      ctx.font = 'bold 18px monospace';
-      ctx.fillText(`ENDEREÇO IP (Gateway): ${preset.defaultIp}`, 40, 120);
-      ctx.fillText(`USUÁRIO (Login): ${preset.defaultUser}`, 40, 165);
-      ctx.fillText(`SENHA (Password): ${preset.defaultPass}`, 40, 210);
-
-      ctx.fillStyle = '#475569';
-      ctx.font = '16px monospace';
-      ctx.fillText(`Rede Wi-Fi (SSID): ${preset.wifiSsid}`, 40, 265);
-      ctx.fillText(`Senha do Wi-Fi: ${preset.wifiPassword}`, 40, 305);
-      ctx.fillText(`MAC: ${preset.macAddress}  |  S/N: ${preset.serialNumber}`, 40, 350);
-
-      // Barcode simulation
-      ctx.fillStyle = '#000000';
-      for (let i = 40; i < 740; i += 6) {
-        if (Math.sin(i * 3) > 0) {
-          ctx.fillRect(i, 380, 4, 35);
-        }
-      }
-
-      const generatedDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      setCapturedImagePreview(generatedDataUrl);
-      processImageForModemData(generatedDataUrl, preset);
     }
   };
 
@@ -517,14 +433,14 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
             </div>
 
             {/* Direct Instant Action Buttons in VIBRANT RED */}
-            <div className="flex flex-col w-full gap-2 pt-1">
+            <div className="flex flex-col w-full gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={openNativeCamera}
                 className="w-full py-3.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 active:scale-98 transition-all cursor-pointer"
               >
                 <Camera className="w-4 h-4" />
-                <span>Tirar Foto da Etiqueta</span>
+                <span>Abrir Câmera do Celular</span>
               </button>
 
               <div className="grid grid-cols-2 gap-2">
@@ -646,10 +562,9 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         )}
       </div>
 
-      {/* Primary Action Buttons Bar */}
-      <div className="flex flex-col sm:flex-row items-center gap-3">
-        {/* If live camera is active, show the Shutter button */}
-        {cameraActive && !capturedImagePreview && (
+      {/* Primary Action Buttons Bar for Live Camera */}
+      {cameraActive && !capturedImagePreview && (
+        <div className="flex flex-col items-center w-full">
           <button
             type="button"
             onClick={captureFrame}
@@ -659,88 +574,8 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
             <Scan className="w-5 h-5 text-white animate-pulse" />
             <span>Capturar Foto da Etiqueta</span>
           </button>
-        )}
-
-        {/* If camera is not live, show the 2 main mobile buttons */}
-        {!cameraActive && (
-          <>
-            <button
-              type="button"
-              onClick={openNativeCamera}
-              disabled={isScanning}
-              className="w-full sm:flex-1 py-3.5 px-5 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-2xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 active:scale-98 transition-all cursor-pointer"
-            >
-              <Camera className="w-4 h-4" />
-              <span>Tirar Foto com a Câmera</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={openGallery}
-              disabled={isScanning}
-              className="w-full sm:w-auto py-3.5 px-4 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer shadow-xs"
-            >
-              <Upload className="w-4 h-4 text-red-600" />
-              <span>Enviar Imagem</span>
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* Preset / Sample Modems Section */}
-      <div className="bg-white border border-slate-200/90 rounded-3xl p-5 flex flex-col gap-3 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Tag className="w-4 h-4 text-red-600" />
-            <h3 className="text-sm font-bold text-slate-900">
-              Ou teste com uma etiqueta pré-configurada
-            </h3>
-          </div>
-          <span className="text-[11px] text-red-600 font-bold">
-            1 toque
-          </span>
         </div>
-
-        <p className="text-xs text-slate-600">
-          Toque em uma das operadoras/modelos abaixo para carregar uma etiqueta e ver o preenchimento automático no navegador:
-        </p>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
-          {SAMPLE_MODEMS.map((preset) => {
-            const isSelected = selectedPreset?.id === preset.id;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => handleSelectSample(preset)}
-                className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all active:scale-[0.97] cursor-pointer ${
-                  isSelected
-                    ? 'bg-red-50/80 border-red-500 shadow-sm'
-                    : 'bg-slate-50 border-slate-200 hover:border-red-300 hover:bg-red-50/30'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full mb-1.5">
-                  <span
-                    className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full text-white"
-                    style={{ backgroundColor: preset.themeColor }}
-                  >
-                    {preset.brand.split(' ')[0]}
-                  </span>
-                  <span className="text-[10px] font-mono text-red-600 font-bold">
-                    {preset.defaultIp}
-                  </span>
-                </div>
-                <div className="text-xs font-bold text-slate-900 truncate w-full">
-                  {preset.model}
-                </div>
-                <div className="text-[11px] text-slate-500 font-mono mt-0.5 truncate w-full">
-                  {preset.defaultUser} • {preset.defaultPass}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      )}
 
       {/* Scanned Card Quick Preview if active */}
       {activeModem && (
@@ -749,16 +584,22 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
             <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
             <div>
               <p className="font-bold text-slate-900">
-                Modem pronto: {activeModem.brand} {activeModem.model}
+                Modem ativo: {activeModem.brand} {activeModem.model}
               </p>
               <p className="font-mono text-emerald-700 font-semibold">
                 IP: {activeModem.ip} | Login: {activeModem.username}
               </p>
             </div>
           </div>
-          <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-200">
-            Ativo
-          </span>
+          {onFinishAccess && (
+            <button
+              type="button"
+              onClick={onFinishAccess}
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-red-50 text-red-600 border border-red-200 font-bold text-xs transition-all cursor-pointer shadow-2xs"
+            >
+              Novo Acesso
+            </button>
+          )}
         </div>
       )}
     </div>

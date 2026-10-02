@@ -26,17 +26,20 @@ import {
   Info,
   HelpCircle,
   CheckCircle2,
+  RotateCcw,
 } from 'lucide-react';
 import { ScannedModem, ConnectedDevice } from '../types';
 
 interface ModemBrowserSimulatorProps {
   modem: ScannedModem;
   onUpdateModem?: (updated: ScannedModem) => void;
+  onFinishAccess?: () => void;
 }
 
 export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   modem,
   onUpdateModem,
+  onFinishAccess,
 }) => {
   // Browser States
   const [currentUrl, setCurrentUrl] = useState<string>(`http://${modem.ip}/`);
@@ -383,6 +386,18 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         </div>
+
+        {/* Botão Finalizar Acesso e Limpar Dados para Novo Acesso */}
+        {onFinishAccess && (
+          <button
+            type="button"
+            onClick={onFinishAccess}
+            className="w-full py-2.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border border-red-200 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs"
+          >
+            <RotateCcw className="w-4 h-4 text-red-600" />
+            <span>Finalizar Acesso e Limpar Dados (Novo Acesso)</span>
+          </button>
+        )}
       </div>
 
       {/* CLARIFICAÇÃO TÉCNICA E GUIA DE PREENCHIMENTO */}
@@ -621,8 +636,21 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                   </div>
                 </div>
 
-                {/* Dashboard Tabs com Botões em VERMELHO */}
-                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 self-stretch sm:self-auto overflow-x-auto">
+                <div className="flex items-center gap-2 self-stretch sm:self-auto justify-between sm:justify-end">
+                  {onFinishAccess && (
+                    <button
+                      type="button"
+                      onClick={onFinishAccess}
+                      className="px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs whitespace-nowrap"
+                      title="Finalizar este acesso e limpar os dados"
+                    >
+                      <RotateCcw className="w-3 h-3 text-red-600" />
+                      <span>Sair / Novo</span>
+                    </button>
+                  )}
+
+                  {/* Dashboard Tabs com Botões em VERMELHO */}
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto">
                   <button
                     type="button"
                     onClick={() => setActiveTab('dashboard')}
@@ -669,8 +697,9 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                   </button>
                 </div>
               </div>
+            </div>
 
-              {/* TAB 1: PAINEL GERAL */}
+            {/* TAB 1: PAINEL GERAL */}
               {activeTab === 'dashboard' && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                   <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col gap-1 shadow-xs">

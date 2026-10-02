@@ -112,6 +112,11 @@ export default function App() {
     });
   };
 
+  const handleFinishAccess = () => {
+    setActiveModem(null);
+    setActiveTab('scanner');
+  };
+
   const handleSelectIpFromGuide = (ip: string, user: string, pass: string) => {
     const customModem: ScannedModem = {
       id: 'custom-' + Date.now(),
@@ -213,16 +218,28 @@ export default function App() {
             </div>
           </div>
 
-          {/* Quick Active Gateway Indicator Pill */}
+          {/* Quick Active Gateway Indicator Pill & Finish Access Button */}
           {activeModem ? (
-            <button
-              type="button"
-              onClick={() => setActiveTab('browser')}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 border border-red-200 hover:bg-red-100 text-[11px] font-mono transition-all cursor-pointer shadow-2xs"
-            >
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <span className="text-red-700 font-bold">{activeModem.ip}</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setActiveTab('browser')}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-50 border border-red-200 hover:bg-red-100 text-[11px] font-mono transition-all cursor-pointer shadow-2xs"
+                title="Acessar navegador do modem"
+              >
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                <span className="text-red-700 font-bold">{activeModem.ip}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleFinishAccess}
+                title="Finalizar este acesso e limpar dados para novo modem"
+                className="px-2.5 py-1 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-full text-[10px] font-bold transition-all cursor-pointer shadow-2xs"
+              >
+                Sair
+              </button>
+            </div>
           ) : (
             <span className="text-[10px] text-slate-400 font-mono">
               Pronto
@@ -236,6 +253,7 @@ export default function App() {
             <ModemScanner
               onScanSuccess={handleScanSuccess}
               activeModem={activeModem}
+              onFinishAccess={handleFinishAccess}
             />
           )}
 
@@ -243,6 +261,7 @@ export default function App() {
             <ModemBrowserSimulator
               modem={activeModem}
               onUpdateModem={handleUpdateModem}
+              onFinishAccess={handleFinishAccess}
             />
           )}
 
@@ -272,6 +291,7 @@ export default function App() {
               modem={activeModem}
               onUpdate={handleUpdateModem}
               onOpenBrowser={() => setActiveTab('browser')}
+              onFinishAccess={handleFinishAccess}
             />
           )}
 
