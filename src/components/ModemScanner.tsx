@@ -54,60 +54,42 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
   // Safe camera stream acquisition with progressive fallbacks
   const acquireMediaStream = async (targetFacing: 'environment' | 'user'): Promise<MediaStream> => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('Câmera direta via navegador não suportada. Use o botão de foto abaixo.');
+      throw new Error('Câmera direta via navegador não suportada neste aplicativo. Use o botão "Tirar Foto da Etiqueta".');
     }
 
-    const withTimeout = <T,>(promise: Promise<T>, ms = 5000): Promise<T> => {
-      return Promise.race([
-        promise,
-        new Promise<T>((_, reject) =>
-          setTimeout(() => reject(new Error('A câmera demorou a responder.')), ms)
-        ),
-      ]);
-    };
-
-    // Attempt 1: Standard mobile camera resolution
+    // Attempt 1: Standard mobile camera with back camera requested
     try {
-      return await withTimeout(
-        navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: targetFacing },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        }),
-        3500
-      );
+      return await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: targetFacing },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
     } catch {
       // ignore and try next
     }
 
     // Attempt 2: Simple facingMode
     try {
-      return await withTimeout(
-        navigator.mediaDevices.getUserMedia({
-          video: { facingMode: targetFacing },
-          audio: false,
-        }),
-        3000
-      );
+      return await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: targetFacing },
+        audio: false,
+      });
     } catch {
       // ignore and try next
     }
 
     // Attempt 3: Any video device (fallback)
-    return await withTimeout(
-      navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: false,
-      }),
-      3000
-    );
+    return await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: false,
+    });
   };
 
   // Start Live WebRTC Camera
-  const startCamera = async () => {
+  const startCamera = async (isAutoMount = false) => {
     try {
       setIsStartingCamera(true);
       setCameraError(null);
@@ -142,9 +124,12 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     } catch (err: any) {
       setIsStartingCamera(false);
       setCameraActive(false);
-      setCameraError(
-        'A câmera direta não abriu neste dispositivo. Toque no botão "Tirar Foto da Etiqueta" abaixo para fotografar diretamente com o celular.'
-      );
+      // If failed automatically on page load due to mobile browser autoplay policy, do not show an aggressive error, just wait for user tap
+      if (!isAutoMount) {
+        setCameraError(
+          'Para usar a câmera ao vivo, permita o acesso à câmera quando o navegador solicitar, ou toque em "Tirar Foto com a Câmera" para fotografar diretamente com o celular.'
+        );
+      }
     }
   };
 
@@ -194,7 +179,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
 
   // Auto-start live camera on mount
   useEffect(() => {
-    startCamera();
+    startCamera(true);
     return () => {
       stopCamera();
     };
@@ -411,7 +396,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
           <span>Scanner Óptico com Leitura de IA</span>
         </div>
         <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-          Escanear Etiqueta do Modem
+          Configurações do Modem
         </h2>
         <p className="text-xs sm:text-sm text-slate-600">
           Tire uma foto da etiqueta com <span className="text-red-600 font-bold">IP, Usuário e Senha</span> para preencher automaticamente na página do modem.
