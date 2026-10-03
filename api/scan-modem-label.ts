@@ -94,8 +94,7 @@ Retorne estritamente o objeto JSON conforme o schema.
 ${manualHint ? `Dica adicional: ${manualHint}` : ''}
 `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const requestPayload = {
       contents: [
         {
           role: 'user',
@@ -114,7 +113,7 @@ ${manualHint ? `Dica adicional: ${manualHint}` : ''}
       ],
       config: {
         systemInstruction:
-          'Você é um leitor óptico especialista em etiquetas de roteadores. Extraia com precisão absoluta apenas o que estiver visível na imagem fotografada pelo usuário.',
+          'Você é um leitor óptico especialista em etiquetas de roteadores. Extraia com precisão absoluta as informações visíveis na foto. Se o usuário ou senha não estiverem expressos, use os padrões mais prováveis da marca.',
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
@@ -164,22 +163,59 @@ ${manualHint ? `Dica adicional: ${manualHint}` : ''}
               description: 'Observações específicas do que foi lido na foto',
             },
           },
-          required: ['ip', 'username', 'password'],
         },
       },
-    });
+    };
+
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        ...requestPayload,
+      });
+    } catch (modelErr: any) {
+      console.warn('Tentativa com gemini-3.8-flash falhou/ocupado na Vercel, usando gemini-3.1-flash-lite:', modelErr?.message || modelErr);
+      response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite',
+        ...requestPayload,
+      });
+    }
 
     const textOutput = response.text?.trim() || '{}';
-    const parsedData = JSON.parse(textOutput);
+    let parsedData: any = {};
+    try {
+      parsedData = JSON.parse(textOutput);
+    } catch {
+      const cleaned = textOutput.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+      try {
+        parsedData = JSON.parse(cleaned);
+      } catch {
+        parsedData = {};
+      }
+    }
 
-    let normalizedIp = parsedData.ip ? parsedData.ip.trim() : '192.168.1.1';
-    normalizedIp = normalizedIp.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+    const isInvalid = (val: any) => !val || val === 'null' || val === 'undefined' || val === 'None';
+
+    let normalizedIp = !isInvalid(parsedData.ip) ? String(parsedData.ip).trim() : '192.168.1.1';
+    normalizedIp = normalizedIp.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+    if (!normalizedIp || normalizedIp === 'null') {
+      normalizedIp = '192.168.1.1';
+    }
 
     return res.status(200).json({
       success: true,
       data: {
-        ...parsedData,
         ip: normalizedIp,
+        username: !isInvalid(parsedData.username) ? String(parsedData.username).trim() : 'admin',
+        password: !isInvalid(parsedData.password) ? String(parsedData.password).trim() : 'admin',
+        brand: !isInvalid(parsedData.brand) ? String(parsedData.brand).trim() : 'Roteador Identificado',
+        model: !isInvalid(parsedData.model) ? String(parsedData.model).trim() : '',
+        wifiSsid: !isInvalid(parsedData.wifiSsid) ? String(parsedData.wifiSsid).trim() : '',
+        wifiPassword: !isInvalid(parsedData.wifiPassword) ? String(parsedData.wifiPassword).trim() : '',
+        macAddress: !isInvalid(parsedData.macAddress) ? String(parsedData.macAddress).trim() : '',
+        serialNumber: !isInvalid(parsedData.serialNumber) ? String(parsedData.serialNumber).trim() : '',
+        confidence: parsedData.confidence || 'alta',
+        notes: parsedData.notes || '',
         cleanUrl: `http://${normalizedIp}`,
       },
     });

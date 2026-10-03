@@ -19,6 +19,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { ScannedModem } from '../types';
+import { copyToClipboardSafe } from '../utils/clipboard';
 
 interface ModemCredentialsCardProps {
   modem: ScannedModem;
@@ -46,8 +47,8 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
   const [wifiSsid, setWifiSsid] = useState<string>(modem.wifiSsid || '');
   const [wifiPassword, setWifiPassword] = useState<string>(modem.wifiPassword || '');
 
-  const copyToClipboard = (text: string, fieldName: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string, fieldName: string) => {
+    await copyToClipboardSafe(text);
     setCopiedField(fieldName);
     setTimeout(() => setCopiedField(null), 2000);
   };
@@ -180,16 +181,6 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
               )}
             </div>
           </div>
-          {!isEditing && (
-            <button
-              type="button"
-              onClick={() => copyToClipboard(modem.username, 'user')}
-              className="p-2 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 rounded-xl transition-all cursor-pointer shadow-2xs"
-              title="Copiar Usuário"
-            >
-              {copiedField === 'user' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-            </button>
-          )}
         </div>
 
         {/* Password */}
@@ -217,24 +208,14 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
             </div>
           </div>
           {!isEditing && (
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="p-2 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 rounded-xl transition-all cursor-pointer shadow-2xs"
-                title="Mostrar/Ocultar"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => copyToClipboard(modem.password, 'pass')}
-                className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all cursor-pointer shadow-xs"
-                title="Copiar Senha"
-              >
-                {copiedField === 'pass' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="p-2 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 rounded-xl transition-all cursor-pointer shadow-2xs"
+              title={showPassword ? 'Ocultar' : 'Mostrar'}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
           )}
         </div>
 
@@ -290,15 +271,19 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
         )}
       </div>
 
-      {/* Main Call to Action Button in VIBRANT RED */}
+      {/* Action Buttons: ONLY Copiar Login + Senha and Open Browser */}
       <div className="pt-2 flex flex-col gap-2">
         <button
           type="button"
           onClick={() => copyToClipboard(`${modem.username}\n${modem.password}`, 'both')}
-          className="w-full py-3 px-4 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs"
+          className="w-full py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs active:scale-98"
         >
-          {copiedField === 'both' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-          <span>{copiedField === 'both' ? 'Login e Senha Copiados!' : 'Copiar Login e Senha'}</span>
+          {copiedField === 'both' ? (
+            <Check className="w-4 h-4 text-emerald-600" />
+          ) : (
+            <Copy className="w-4 h-4 text-red-600" />
+          )}
+          <span>{copiedField === 'both' ? 'Login e Senha Copiados Juntos!' : 'Copiar Login + Senha'}</span>
         </button>
 
         <button

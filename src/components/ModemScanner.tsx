@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Camera,
-  Upload,
   Flashlight,
   FlashlightOff,
   RefreshCw,
@@ -9,8 +8,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Scan,
-  Zap,
-  ArrowRight,
   ImageIcon,
   Video,
 } from 'lucide-react';
@@ -43,7 +40,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
   const [scanStatusStep, setScanStatusStep] = useState<string>('');
   const [capturedImagePreview, setCapturedImagePreview] = useState<string | null>(null);
 
-  // Stop Camera
+  // Stop Camera stream
   const stopCamera = () => {
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
@@ -57,7 +54,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
   // Safe camera stream acquisition with progressive fallbacks
   const acquireMediaStream = async (targetFacing: 'environment' | 'user'): Promise<MediaStream> => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('Câmera direta via WebRTC não suportada neste navegador.');
+      throw new Error('Câmera direta via navegador não suportada. Use o botão de foto abaixo.');
     }
 
     const withTimeout = <T,>(promise: Promise<T>, ms = 5000): Promise<T> => {
@@ -82,8 +79,8 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         }),
         3500
       );
-    } catch (e1) {
-      console.warn('Tentativa 1 com resolução ideal falhou:', e1);
+    } catch {
+      // ignore and try next
     }
 
     // Attempt 2: Simple facingMode
@@ -95,8 +92,8 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         }),
         3000
       );
-    } catch (e2) {
-      console.warn('Tentativa 2 com facingMode falhou:', e2);
+    } catch {
+      // ignore and try next
     }
 
     // Attempt 3: Any video device (fallback)
@@ -125,8 +122,8 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         videoRef.current.srcObject = mediaStream;
         try {
           await videoRef.current.play();
-        } catch (playErr) {
-          console.warn('Play video silencioso:', playErr);
+        } catch {
+          // Play video silent fail
         }
       }
 
@@ -143,18 +140,15 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         setHasTorch(false);
       }
     } catch (err: any) {
-      console.warn('Falha ao abrir stream ao vivo da câmera:', err?.message || err);
       setIsStartingCamera(false);
       setCameraActive(false);
-
-      // In case live WebRTC fails or times out, suggest the native camera
       setCameraError(
-        'A transmissão de vídeo ao vivo não pôde ser iniciada. Toque no botão "Abrir Câmera do Celular" abaixo para fotografar diretamente a etiqueta!'
+        'A câmera direta não abriu neste dispositivo. Toque no botão "Tirar Foto da Etiqueta" abaixo para fotografar diretamente com o celular.'
       );
     }
   };
 
-  // Open native mobile camera app (100% reliable on iOS Safari, Android Chrome, and WebViews)
+  // Open native mobile camera app
   const openNativeCamera = () => {
     if (nativeCameraInputRef.current) {
       nativeCameraInputRef.current.value = '';
@@ -198,50 +192,9 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     }
   };
 
-  // Compress & resize image to prevent huge mobile uploads and ensure fast OCR
-  const compressImage = (fileOrDataUrl: File | string, maxDimension = 1400, quality = 0.85): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
-          } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
-          }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', quality));
-        } else {
-          resolve(typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '');
-        }
-      };
-      img.onerror = () => {
-        resolve(typeof fileOrDataUrl === 'string' ? fileOrDataUrl : '');
-      };
-
-      if (typeof fileOrDataUrl === 'string') {
-        img.src = fileOrDataUrl;
-      } else {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          img.src = e.target?.result as string;
-        };
-        reader.readAsDataURL(fileOrDataUrl);
-      }
-    });
-  };
-
-  // Clean up on unmount
+  // Auto-start live camera on mount
   useEffect(() => {
+    startCamera();
     return () => {
       stopCamera();
     };
@@ -249,11 +202,18 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
 
   // Process image with Gemini API
   const processImageForModemData = async (base64Data: string) => {
+    if (!base64Data || base64Data.length < 50) {
+      setIsScanning(false);
+      setCameraError('Não foi possível ler a foto capturada. Por favor, tire outra foto da etiqueta.');
+      return;
+    }
+
     setIsScanning(true);
-    setScanStatusStep('Iniciando análise de visão óptica da sua foto...');
+    setCameraError(null);
+    setScanStatusStep('Analisando etiqueta do roteador com IA...');
 
     try {
-      setScanStatusStep('Localizando IP, Usuário e Senha na etiqueta fotografada...');
+      setScanStatusStep('Localizando IP, Usuário e Senha na foto...');
 
       // Call server-side Gemini API endpoint
       const response = await fetch('/api/scan-modem-label', {
@@ -265,17 +225,19 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Servidor retornou status ' + response.status);
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.success) {
+        const serverError = result?.error || `Falha de conexão com o servidor (código ${response.status}).`;
+        throw new Error(serverError);
       }
 
       setScanStatusStep('Extraindo credenciais reais da sua foto...');
-      const result = await response.json();
 
       if (result.success && result.data) {
         const parsed = result.data;
         const brandName = parsed.brand || 'Roteador Identificado';
-        const modelName = parsed.model || 'Padrão';
+        const modelName = parsed.model || '';
 
         const scannedModem: ScannedModem = {
           id: 'modem-' + Date.now(),
@@ -294,44 +256,54 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
           sourceImage: base64Data,
         };
 
-        setScanStatusStep(`Identificado: ${brandName}! Redirecionando...`);
+        setScanStatusStep(`Identificado: ${brandName}! Conectando e preenchendo...`);
         setTimeout(() => {
           setIsScanning(false);
           onScanSuccess(scannedModem);
-        }, 600);
+        }, 500);
         return;
       }
 
-      throw new Error(result.error || 'Não foi possível ler as informações.');
+      throw new Error(result?.error || 'Não foi possível ler as credenciais da etiqueta.');
     } catch (err: any) {
       console.warn('Erro ao processar imagem:', err);
-
       setIsScanning(false);
-      setCameraError(
-        'A foto não ficou nítida o suficiente para ler o IP e a senha. Aproxime mais a câmera da etiqueta com boa iluminação e tente novamente.'
-      );
-      setCapturedImagePreview(null);
+      const rawMsg = err?.message || 'Falha ao processar a foto da etiqueta.';
+      setCameraError(rawMsg);
     }
   };
 
   // Capture Frame from Live Camera
   const captureFrame = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
-
+    if (!videoRef.current) return;
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    try {
+      setIsScanning(true);
+      setCameraError(null);
+      setScanStatusStep('Capturando foto da câmera...');
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const rawDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    const optimizedDataUrl = await compressImage(rawDataUrl, 1400, 0.85);
-    setCapturedImagePreview(optimizedDataUrl);
+      const canvas = canvasRef.current || document.createElement('canvas');
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
+      canvas.width = w;
+      canvas.height = h;
 
-    processImageForModemData(optimizedDataUrl);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Falha ao processar imagem da câmera.');
+      }
+
+      ctx.drawImage(video, 0, 0, w, h);
+      const rawDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+      setCapturedImagePreview(rawDataUrl);
+      await processImageForModemData(rawDataUrl);
+    } catch (err: any) {
+      console.error('Erro ao capturar foto do vídeo:', err);
+      setIsScanning(false);
+      setCameraError('Erro ao capturar foto: ' + (err?.message || 'Tente novamente.'));
+    }
   };
 
   // Handle Photo from Native Camera or Gallery
@@ -339,15 +311,73 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Reset input so taking another photo with same filename fires onChange
+    e.target.value = '';
+
     try {
       setIsScanning(true);
-      setScanStatusStep('Otimizando imagem para leitura rápida...');
-      const optimizedDataUrl = await compressImage(file, 1400, 0.85);
-      setCapturedImagePreview(optimizedDataUrl);
-      processImageForModemData(optimizedDataUrl);
-    } catch (err) {
-      console.warn('Erro ao otimizar foto:', err);
+      setCameraError(null);
+      setScanStatusStep('Carregando foto capturada...');
+
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+
+      img.onload = async () => {
+        try {
+          const maxDim = 1280;
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const optimized = canvas.toDataURL('image/jpeg', 0.85);
+            URL.revokeObjectURL(objectUrl);
+            setCapturedImagePreview(optimized);
+            await processImageForModemData(optimized);
+          } else {
+            throw new Error('Falha no renderizador.');
+          }
+        } catch {
+          URL.revokeObjectURL(objectUrl);
+          // Fallback via FileReader
+          const reader = new FileReader();
+          reader.onload = () => {
+            const raw = reader.result as string;
+            setCapturedImagePreview(raw);
+            processImageForModemData(raw);
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        const reader = new FileReader();
+        reader.onload = () => {
+          const raw = reader.result as string;
+          setCapturedImagePreview(raw);
+          processImageForModemData(raw);
+        };
+        reader.readAsDataURL(file);
+      };
+
+      img.src = objectUrl;
+    } catch (err: any) {
+      console.warn('Erro ao processar arquivo:', err);
       setIsScanning(false);
+      setCameraError('Erro ao carregar a foto: ' + (err?.message || 'Tente novamente.'));
     }
   };
 
@@ -360,14 +390,18 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         accept="image/*"
         capture="environment"
         onChange={handleFileUpload}
-        className="hidden"
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
       />
       <input
         ref={galleryInputRef}
         type="file"
         accept="image/*"
         onChange={handleFileUpload}
-        className="hidden"
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
       />
 
       {/* Header Info */}
@@ -380,7 +414,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
           Escanear Etiqueta do Modem
         </h2>
         <p className="text-xs sm:text-sm text-slate-600">
-          Abra a câmera e enquadre a etiqueta com <span className="text-red-600 font-bold">IP, Usuário e Senha</span> na base do roteador.
+          Tire uma foto da etiqueta com <span className="text-red-600 font-bold">IP, Usuário e Senha</span> para preencher automaticamente na página do modem.
         </p>
       </div>
 
@@ -411,7 +445,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
           />
         )}
 
-        {/* State: Camera Standby or Error (Show Big Action Buttons in Light Theme & Red) */}
+        {/* State: Camera Standby (Show Instant Buttons in VIBRANT RED) */}
         {!cameraActive && !capturedImagePreview && (
           <div className="flex flex-col items-center justify-center p-6 text-center z-10 gap-4 max-w-sm">
             <div className="relative">
@@ -425,10 +459,10 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
 
             <div className="space-y-1">
               <h3 className="text-base font-extrabold text-slate-900">
-                Pronto para Escanear
+                Tirar Foto da Etiqueta
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                {cameraError || 'Fotografe a etiqueta na traseira do modem para extrair os dados e acessar automaticamente.'}
+                {cameraError || 'Fotografe a etiqueta na traseira do modem para ler e preencher automaticamente login e senha.'}
               </p>
             </div>
 
@@ -440,7 +474,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
                 className="w-full py-3.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 active:scale-98 transition-all cursor-pointer"
               >
                 <Camera className="w-4 h-4" />
-                <span>Abrir Câmera do Celular</span>
+                <span>Tirar Foto com a Câmera</span>
               </button>
 
               <div className="grid grid-cols-2 gap-2">
@@ -553,6 +587,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
             type="button"
             onClick={() => {
               setCapturedImagePreview(null);
+              startCamera();
             }}
             className="absolute top-3 left-3 px-3 py-1.5 rounded-full bg-white text-slate-800 border border-slate-300 text-xs font-semibold flex items-center gap-1.5 hover:bg-slate-100 transition-all z-10 cursor-pointer shadow-md"
           >
@@ -564,7 +599,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
 
       {/* Primary Action Buttons Bar for Live Camera */}
       {cameraActive && !capturedImagePreview && (
-        <div className="flex flex-col items-center w-full">
+        <div className="flex flex-col items-center w-full gap-2.5">
           <button
             type="button"
             onClick={captureFrame}
@@ -574,6 +609,46 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
             <Scan className="w-5 h-5 text-white animate-pulse" />
             <span>Capturar Foto da Etiqueta</span>
           </button>
+
+          <button
+            type="button"
+            onClick={openNativeCamera}
+            className="text-xs font-bold text-slate-600 hover:text-red-600 py-1 flex items-center gap-1.5 cursor-pointer"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>Ou usar o aplicativo de câmera nativo do celular</span>
+          </button>
+        </div>
+      )}
+
+      {/* Error Alert Card if photo scan had an issue */}
+      {cameraError && (
+        <div className="bg-red-50/90 border-2 border-red-200 rounded-3xl p-4 flex flex-col gap-3 text-xs text-red-900 shadow-sm">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span className="font-black text-red-900 text-sm block">Aviso na Leitura da Foto</span>
+              <p className="mt-0.5 text-red-700 leading-relaxed font-medium">{cameraError}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-1 border-t border-red-200/80">
+            <button
+              type="button"
+              onClick={openNativeCamera}
+              className="flex-1 py-2.5 px-3 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>Tirar Outra Foto com a Câmera</span>
+            </button>
+            <button
+              type="button"
+              onClick={openGallery}
+              className="py-2.5 px-3 bg-white hover:bg-red-50 text-red-700 border border-red-300 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+            >
+              <ImageIcon className="w-3.5 h-3.5" />
+              <span>Escolher da Galeria</span>
+            </button>
+          </div>
         </div>
       )}
 

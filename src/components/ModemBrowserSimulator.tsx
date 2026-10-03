@@ -27,8 +27,10 @@ import {
   HelpCircle,
   CheckCircle2,
   RotateCcw,
+  User,
 } from 'lucide-react';
 import { ScannedModem, ConnectedDevice } from '../types';
+import { copyToClipboardSafe } from '../utils/clipboard';
 
 interface ModemBrowserSimulatorProps {
   modem: ScannedModem;
@@ -47,6 +49,8 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   const [typedUser, setTypedUser] = useState<string>('');
   const [typedPass, setTypedPass] = useState<string>('');
   const [isCopiedBoth, setIsCopiedBoth] = useState<boolean>(false);
+  const [isCopiedPass, setIsCopiedPass] = useState<boolean>(false);
+  const [isCopiedUser, setIsCopiedUser] = useState<boolean>(false);
   const [isCopiedBookmarklet, setIsCopiedBookmarklet] = useState<boolean>(false);
   const [showPass, setShowPass] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'wifi' | 'devices' | 'tools'>('dashboard');
@@ -173,26 +177,33 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     triggerAutoLogin();
   }, [modem.id, modem.ip, modem.username, modem.password, modem.wifiSsid, modem.wifiPassword, modem.brand]);
 
-  // Copy to clipboard helper
-  const copyText = (text: string, type: 'both' | 'bookmarklet') => {
-    navigator.clipboard.writeText(text);
-    if (type === 'both') {
+  // Copy to clipboard helper with iOS Safari fallback
+  const copyText = async (text: string, type: 'pass' | 'user' | 'both' | 'bookmarklet') => {
+    await copyToClipboardSafe(text);
+    if (type === 'pass') {
+      setIsCopiedPass(true);
+      setTimeout(() => setIsCopiedPass(false), 2200);
+    } else if (type === 'user') {
+      setIsCopiedUser(true);
+      setTimeout(() => setIsCopiedUser(false), 2200);
+    } else if (type === 'both') {
       setIsCopiedBoth(true);
-      setTimeout(() => setIsCopiedBoth(false), 2000);
+      setTimeout(() => setIsCopiedBoth(false), 2200);
     } else {
       setIsCopiedBookmarklet(true);
-      setTimeout(() => setIsCopiedBookmarklet(false), 2000);
+      setTimeout(() => setIsCopiedBookmarklet(false), 2200);
     }
   };
 
   // Open in Real External Native Browser (Chrome/Safari)
-  const openInExternalBrowser = () => {
+  const openInExternalBrowser = async () => {
     const rawIp = modem.ip.replace(/^https?:\/\//i, '');
     const target = `http://${rawIp}`;
 
-    // Auto copy login and password to clipboard so user can paste instantly
-    navigator.clipboard.writeText(`${modem.username}\n${modem.password}`);
+    // Auto copy login + password with iOS fallback
+    await copyToClipboardSafe(`${modem.username}\n${modem.password}`);
     setIsCopiedBoth(true);
+    setTimeout(() => setIsCopiedBoth(false), 3000);
 
     window.open(target, '_blank');
   };
@@ -355,36 +366,40 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
         </div>
 
         {/* Primary Action Button in VIBRANT RED */}
-        <div className="pt-1 border-t border-slate-100">
+        <div className="pt-1 border-t border-slate-100 flex flex-col gap-2">
           <button
             type="button"
             onClick={openInExternalBrowser}
-            className="w-full py-3.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 transition-all cursor-pointer"
+            className="w-full py-3.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 transition-all cursor-pointer active:scale-98"
           >
             <ExternalLink className="w-4 h-4" />
-            <span>Abrir no Chrome / Safari (Copia Login e Senha)</span>
-          </button>
-        </div>
-
-        {/* Quick Copy Action Bar - DEIXANDO SOMENTE A OPÇÃO COPIAR LOGIN E SENHA */}
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 border border-slate-200 p-2.5 rounded-2xl">
-          <button
-            type="button"
-            onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
-            className="flex-1 py-2.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
-          >
-            {isCopiedBoth ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            <span>{isCopiedBoth ? 'Login e Senha Copiados!' : 'Copiar Login e Senha'}</span>
+            <span>Abrir no Chrome / Safari</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setShowPass(!showPass)}
-            title="Ver Senha"
-            className="p-2 text-slate-500 hover:text-red-600 hover:bg-white rounded-xl border border-transparent hover:border-slate-200 transition-all cursor-pointer"
-          >
-            {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
+          {/* Quick Copy Action Bar - ONLY Copiar Login + Senha */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
+              className="flex-1 py-3 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
+            >
+              {isCopiedBoth ? (
+                <Check className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <Copy className="w-4 h-4 text-red-600" />
+              )}
+              <span>{isCopiedBoth ? 'Login e Senha Copiados!' : 'Copiar Login + Senha'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowPass(!showPass)}
+              title={showPass ? 'Ocultar Senha' : 'Ver Senha'}
+              className="p-3 text-slate-500 hover:text-red-600 bg-slate-50 hover:bg-white rounded-xl border border-slate-200 transition-all cursor-pointer shadow-2xs"
+            >
+              {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         {/* Botão Finalizar Acesso e Limpar Dados para Novo Acesso */}

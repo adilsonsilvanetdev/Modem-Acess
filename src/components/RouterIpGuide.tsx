@@ -14,6 +14,7 @@ import {
   Check,
 } from 'lucide-react';
 import { ROUTER_IP_REFERENCES } from '../data/routerGuide';
+import { copyToClipboardSafe } from '../utils/clipboard';
 
 interface RouterIpGuideProps {
   onSelectIp?: (ip: string, user: string, pass: string) => void;
@@ -31,8 +32,8 @@ export const RouterIpGuide: React.FC<RouterIpGuideProps> = ({ onSelectIp }) => {
       item.notes.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = async (text: string, id: string) => {
+    await copyToClipboardSafe(text);
     setCopiedValue(id);
     setTimeout(() => setCopiedValue(null), 2000);
   };
