@@ -13,6 +13,8 @@ import {
   Maximize2,
   Minimize2,
   Smartphone,
+  ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import { ModemScanner } from './components/ModemScanner';
 import { ModemBrowserSimulator } from './components/ModemBrowserSimulator';
@@ -27,6 +29,7 @@ export default function App() {
   const [history, setHistory] = useState<ScannedModem[]>([]);
   const [currentTime, setCurrentTime] = useState<string>('09:41');
   const [isPhoneFrameMode, setIsPhoneFrameMode] = useState<boolean>(true);
+  const [privacyNotification, setPrivacyNotification] = useState<string | null>(null);
 
   // Dynamic Clock for Mobile Status Bar
   useEffect(() => {
@@ -41,7 +44,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount (only if single active modem from current session exists)
   useEffect(() => {
     try {
       const savedHistory = localStorage.getItem('modem_scanner_history');
@@ -58,19 +61,29 @@ export default function App() {
     }
   }, []);
 
-  // Save to history helper
+  // A cada novo acesso em novos modelos de modens, limpar histórico de senhas e logins anteriores
   const handleScanSuccess = (newModem: ScannedModem) => {
+    // Apaga senhas e histórico anteriores imediatamente para segurança
+    try {
+      localStorage.removeItem('modem_scanner_history');
+    } catch (err) {
+      console.warn('Falha ao limpar histórico anterior:', err);
+    }
+
     setActiveModem(newModem);
-    setHistory((prev) => {
-      const filtered = prev.filter((m) => m.ip !== newModem.ip || m.username !== newModem.username);
-      const updated = [newModem, ...filtered].slice(0, 30);
-      try {
-        localStorage.setItem('modem_scanner_history', JSON.stringify(updated));
-      } catch (err) {
-        console.warn('Falha ao salvar histórico:', err);
-      }
-      return updated;
-    });
+    // Guarda estritamente o modem atual na sessão para evitar acúmulo de senhas de clientes
+    const singleSession = [newModem];
+    setHistory(singleSession);
+    try {
+      localStorage.setItem('modem_scanner_history', JSON.stringify(singleSession));
+    } catch (err) {
+      console.warn('Falha ao salvar sessão:', err);
+    }
+
+    setPrivacyNotification('Histórico anterior limpo! Senhas e logins anteriores foram apagados.');
+    setTimeout(() => {
+      setPrivacyNotification(null);
+    }, 4500);
 
     // Switch to browser simulation view so user sees auto-fill immediately!
     setActiveTab('browser');
@@ -78,42 +91,44 @@ export default function App() {
 
   const handleUpdateModem = (updated: ScannedModem) => {
     setActiveModem(updated);
-    setHistory((prev) => {
-      const updatedList = prev.map((m) => (m.id === updated.id ? updated : m));
-      try {
-        localStorage.setItem('modem_scanner_history', JSON.stringify(updatedList));
-      } catch (err) {
-        console.warn('Falha ao salvar:', err);
-      }
-      return updatedList;
-    });
-  };
-
-  const handleClearHistory = () => {
-    if (confirm('Tem certeza que deseja limpar todo o histórico de modems?')) {
-      setHistory([]);
-      try {
-        localStorage.removeItem('modem_scanner_history');
-      } catch (err) {
-        console.warn(err);
-      }
+    setHistory([updated]);
+    try {
+      localStorage.setItem('modem_scanner_history', JSON.stringify([updated]));
+    } catch (err) {
+      console.warn('Falha ao salvar:', err);
     }
   };
 
-  const handleDeleteModem = (id: string) => {
-    setHistory((prev) => {
-      const updated = prev.filter((m) => m.id !== id);
-      try {
-        localStorage.setItem('modem_scanner_history', JSON.stringify(updated));
-      } catch (err) {
-        console.warn(err);
-      }
-      return updated;
-    });
+  const handleClearHistory = () => {
+    setActiveModem(null);
+    setHistory([]);
+    try {
+      localStorage.removeItem('modem_scanner_history');
+    } catch (err) {
+      console.warn(err);
+    }
+    setPrivacyNotification('Histórico de senhas e logins foi completamente limpo.');
+    setTimeout(() => {
+      setPrivacyNotification(null);
+    }, 4000);
+  };
+
+  const handleDeleteModem = (_id: string) => {
+    handleClearHistory();
   };
 
   const handleFinishAccess = () => {
     setActiveModem(null);
+    setHistory([]);
+    try {
+      localStorage.removeItem('modem_scanner_history');
+    } catch (err) {
+      console.warn(err);
+    }
+    setPrivacyNotification('Acesso finalizado. Senhas e logins apagados com sucesso.');
+    setTimeout(() => {
+      setPrivacyNotification(null);
+    }, 4000);
     setActiveTab('scanner');
   };
 
@@ -234,18 +249,37 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleFinishAccess}
-                title="Finalizar este acesso e limpar dados para novo modem"
-                className="px-2.5 py-1 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-full text-[10px] font-bold transition-all cursor-pointer shadow-2xs"
+                title="Limpar senhas e dados para novo acesso"
+                className="px-2.5 py-1 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-full text-[10px] font-bold transition-all cursor-pointer shadow-2xs flex items-center gap-1"
               >
-                Sair
+                <Trash2 className="w-2.5 h-2.5" />
+                <span>Limpar & Novo</span>
               </button>
             </div>
           ) : (
-            <span className="text-[10px] text-slate-400 font-mono">
-              Pronto
+            <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+              <span>Privacidade Ativa</span>
             </span>
           )}
         </header>
+
+        {/* Privacy Toast Notification */}
+        {privacyNotification && (
+          <div className="bg-emerald-600 text-white text-[11px] font-semibold py-1.5 px-3 flex items-center justify-between shadow-xs transition-all">
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>{privacyNotification}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPrivacyNotification(null)}
+              className="text-white/80 hover:text-white text-xs font-bold ml-2 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* 3. SCROLLABLE SCREEN CONTENT AREA */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-4">

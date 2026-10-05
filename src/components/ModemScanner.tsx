@@ -655,9 +655,10 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
             <button
               type="button"
               onClick={onFinishAccess}
-              className="px-3 py-1.5 rounded-xl bg-white hover:bg-red-50 text-red-600 border border-red-200 font-bold text-xs transition-all cursor-pointer shadow-2xs"
+              title="Limpar senhas deste modem e iniciar novo acesso"
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-red-50 text-red-600 border border-red-200 font-bold text-xs transition-all cursor-pointer shadow-2xs whitespace-nowrap"
             >
-              Novo Acesso
+              Limpar & Novo Acesso
             </button>
           )}
         </div>
