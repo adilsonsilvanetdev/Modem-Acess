@@ -11,7 +11,7 @@ export async function copyToClipboardSafe(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     } catch (err) {
-      console.warn('navigator.clipboard.writeText falhou no iOS/WebView, usando fallback:', err);
+      console.warn('navigator.clipboard.writeText falhou, tentando fallback universal:', err);
     }
   }
 
@@ -20,7 +20,7 @@ export async function copyToClipboardSafe(text: string): Promise<boolean> {
     const textArea = document.createElement('textarea');
     textArea.value = text;
 
-    // Prevent zoom, scroll and visual glitch on iOS
+    // Prevent zoom, scroll, and visual glitches on iOS
     textArea.style.position = 'fixed';
     textArea.style.top = '0';
     textArea.style.left = '0';
@@ -31,32 +31,31 @@ export async function copyToClipboardSafe(text: string): Promise<boolean> {
     textArea.style.outline = 'none';
     textArea.style.boxShadow = 'none';
     textArea.style.background = 'transparent';
-    textArea.style.fontSize = '16px'; // Crucial for iOS to prevent auto-zoom
-    textArea.setAttribute('readonly', '');
-    textArea.setAttribute('aria-hidden', 'true');
+    textArea.style.fontSize = '16px';
+    // IMPORTANT FOR iOS: Do NOT set readonly as iOS WebKit blocks execCommand('copy') on readonly elements
+    textArea.contentEditable = 'true';
+    textArea.readOnly = false;
 
     document.body.appendChild(textArea);
 
-    // iOS WebKit selection trick
-    if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-      const range = document.createRange();
-      range.selectNodeContents(textArea);
-      const selection = window.getSelection();
-      if (selection) {
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
-      textArea.setSelectionRange(0, 999999);
-    } else {
-      textArea.select();
-      textArea.focus();
+    // iOS and Android selection trick
+    textArea.focus();
+    textArea.select();
+
+    const range = document.createRange();
+    range.selectNodeContents(textArea);
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
+    textArea.setSelectionRange(0, text.length);
 
     const successful = document.execCommand('copy');
     document.body.removeChild(textArea);
     return successful;
   } catch (fallbackErr) {
-    console.error('Erro crítico ao copiar para área de transferência no iOS:', fallbackErr);
+    console.error('Erro ao copiar para área de transferência:', fallbackErr);
     return false;
   }
 }

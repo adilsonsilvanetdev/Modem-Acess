@@ -286,10 +286,10 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     // a timestamp param tells Chrome to request the real physical router instead of the cached page of the previous router
     const target = forceNoCache ? `http://${rawIp}/?_nocache=${Date.now()}` : `http://${rawIp}/`;
 
-    // Auto copy ONLY username so pasting in the first field pastes ONLY the login
-    await copyToClipboardSafe(modem.username);
-    setIsCopiedUser(true);
-    setTimeout(() => setIsCopiedUser(false), 3000);
+    // Auto copy login + password together (como era na versão anterior)
+    await copyToClipboardSafe(`${modem.username}\n${modem.password}`);
+    setIsCopiedBoth(true);
+    setTimeout(() => setIsCopiedBoth(false), 3000);
 
     window.open(target, '_blank');
   };
@@ -503,55 +503,29 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             </div>
           </div>
 
-          {/* Quick Copy Action Bar - Separate Copiar Usuário and Copiar Senha */}
-          <div className="flex flex-col gap-2">
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => copyText(modem.username, 'user')}
-                className="py-3 px-3 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
-              >
-                {isCopiedUser ? (
-                  <Check className="w-4 h-4 text-emerald-600" />
-                ) : (
-                  <Copy className="w-4 h-4 text-red-600" />
-                )}
-                <span>{isCopiedUser ? 'Usuário Copiado!' : 'Copiar Usuário'}</span>
-              </button>
+          {/* Quick Copy Action Bar - Somente UM botão para Copiar Login + Senha */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
+              className="flex-1 py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
+            >
+              {isCopiedBoth ? (
+                <Check className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <Copy className="w-4 h-4 text-red-600" />
+              )}
+              <span>{isCopiedBoth ? 'Login e Senha Copiados Juntos!' : 'Copiar Login + Senha'}</span>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => copyText(modem.password, 'pass')}
-                className="py-3 px-3 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
-              >
-                {isCopiedPass ? (
-                  <Check className="w-4 h-4 text-emerald-600" />
-                ) : (
-                  <Key className="w-4 h-4 text-red-600" />
-                )}
-                <span>{isCopiedPass ? 'Senha Copiada!' : 'Copiar Senha'}</span>
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between px-1 text-xs text-slate-500">
-              <span className="text-[11px]">
-                {isCopiedUser ? (
-                  <span className="text-emerald-700 font-bold">✓ Usuário na área de transferência (Cole no Login)</span>
-                ) : isCopiedPass ? (
-                  <span className="text-emerald-700 font-bold">✓ Senha na área de transferência (Cole na Senha)</span>
-                ) : (
-                  <span>Toque para copiar individualmente sem misturar</span>
-                )}
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowPass(!showPass)}
-                className="text-[11px] text-red-600 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer"
-              >
-                {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                <span>{showPass ? 'Ocultar' : 'Ver Senha'}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowPass(!showPass)}
+              title={showPass ? 'Ocultar Senha' : 'Ver Senha'}
+              className="p-3 text-slate-500 hover:text-red-600 bg-slate-50 hover:bg-white rounded-xl border border-slate-200 transition-all cursor-pointer shadow-2xs"
+            >
+              {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
           </div>
         </div>
 
