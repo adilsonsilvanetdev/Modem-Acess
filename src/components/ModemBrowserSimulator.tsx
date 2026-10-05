@@ -38,11 +38,95 @@ interface ModemBrowserSimulatorProps {
   onFinishAccess?: () => void;
 }
 
+interface BrandTheme {
+  name: string;
+  badgeBg: string;
+  accentText: string;
+  headerBar: string;
+  themeTitle: string;
+}
+
+const getBrandTheme = (brand: string): BrandTheme => {
+  const b = (brand || '').toLowerCase();
+  if (b.includes('intelbras')) {
+    return {
+      name: 'Intelbras',
+      badgeBg: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+      accentText: 'text-emerald-700',
+      headerBar: 'bg-emerald-700 text-white',
+      themeTitle: 'Interface Intelbras RouterOS / Wi-Fi',
+    };
+  }
+  if (b.includes('tp-link') || b.includes('tplink')) {
+    return {
+      name: 'TP-Link',
+      badgeBg: 'bg-teal-50 text-teal-800 border-teal-300',
+      accentText: 'text-teal-700',
+      headerBar: 'bg-teal-700 text-white',
+      themeTitle: 'TP-Link Tether Web Gateway',
+    };
+  }
+  if (b.includes('huawei')) {
+    return {
+      name: 'Huawei',
+      badgeBg: 'bg-rose-50 text-rose-800 border-rose-300',
+      accentText: 'text-rose-700',
+      headerBar: 'bg-slate-950 text-white border-b-2 border-rose-600',
+      themeTitle: 'Huawei EchoLife GPON Terminal',
+    };
+  }
+  if (b.includes('zte')) {
+    return {
+      name: 'ZTE',
+      badgeBg: 'bg-blue-50 text-blue-800 border-blue-300',
+      accentText: 'text-blue-700',
+      headerBar: 'bg-blue-800 text-white',
+      themeTitle: 'ZTE ZXHN Broadband Gateway',
+    };
+  }
+  if (b.includes('vivo') || b.includes('mitrastar') || b.includes('askey')) {
+    return {
+      name: 'Vivo Fibra',
+      badgeBg: 'bg-purple-50 text-purple-800 border-purple-300',
+      accentText: 'text-purple-700',
+      headerBar: 'bg-purple-900 text-white',
+      themeTitle: 'Vivo Smart Wi-Fi / MitraStar HGU',
+    };
+  }
+  if (b.includes('claro') || b.includes('net') || b.includes('humax') || b.includes('sagemcom')) {
+    return {
+      name: 'Claro Fibra',
+      badgeBg: 'bg-red-50 text-red-800 border-red-300',
+      accentText: 'text-red-700',
+      headerBar: 'bg-red-700 text-white',
+      themeTitle: 'Claro Gateway Residencial Docsis/GPON',
+    };
+  }
+  if (b.includes('d-link') || b.includes('dlink')) {
+    return {
+      name: 'D-Link',
+      badgeBg: 'bg-amber-50 text-amber-800 border-amber-300',
+      accentText: 'text-amber-700',
+      headerBar: 'bg-amber-700 text-white',
+      themeTitle: 'D-Link Router Web Setup',
+    };
+  }
+  return {
+    name: brand || 'Roteador',
+    badgeBg: 'bg-slate-100 text-slate-800 border-slate-300',
+    accentText: 'text-red-700',
+    headerBar: 'bg-slate-900 text-white',
+    themeTitle: `${brand || 'Modem'} Web Console`,
+  };
+};
+
 export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   modem,
   onUpdateModem,
   onFinishAccess,
 }) => {
+  const brandTheme = getBrandTheme(modem.brand);
+
   // Browser States
   const [currentUrl, setCurrentUrl] = useState<string>(`http://${modem.ip}/`);
   const [authStep, setAuthStep] = useState<'idle' | 'typing_user' | 'typing_pass' | 'submitting' | 'logged_in'>('idle');
@@ -195,15 +279,17 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     }
   };
 
-  // Open in Real External Native Browser (Chrome/Safari)
-  const openInExternalBrowser = async () => {
-    const rawIp = modem.ip.replace(/^https?:\/\//i, '');
-    const target = `http://${rawIp}`;
+  // Open in Real External Native Browser (Chrome/Safari) with Anti-Cache
+  const openInExternalBrowser = async (forceNoCache: boolean = false) => {
+    const rawIp = modem.ip.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+    // Cache buster: when changing modems on the same IP (e.g. 192.168.1.1),
+    // a timestamp param tells Chrome to request the real physical router instead of the cached page of the previous router
+    const target = forceNoCache ? `http://${rawIp}/?_nocache=${Date.now()}` : `http://${rawIp}/`;
 
-    // Auto copy login + password with iOS fallback
-    await copyToClipboardSafe(`${modem.username}\n${modem.password}`);
-    setIsCopiedBoth(true);
-    setTimeout(() => setIsCopiedBoth(false), 3000);
+    // Auto copy ONLY username so pasting in the first field pastes ONLY the login
+    await copyToClipboardSafe(modem.username);
+    setIsCopiedUser(true);
+    setTimeout(() => setIsCopiedUser(false), 3000);
 
     window.open(target, '_blank');
   };
@@ -365,40 +451,107 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
           </button>
         </div>
 
-        {/* Primary Action Button in VIBRANT RED */}
+        {/* Primary Action Button in VIBRANT RED & Anti-Cache Button */}
         <div className="pt-1 border-t border-slate-100 flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={openInExternalBrowser}
-            className="w-full py-3.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 transition-all cursor-pointer active:scale-98"
-          >
-            <ExternalLink className="w-4 h-4" />
-            <span>Abrir no Chrome / Safari</span>
-          </button>
-
-          {/* Quick Copy Action Bar - ONLY Copiar Login + Senha */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <button
               type="button"
-              onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
-              className="flex-1 py-3 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
+              onClick={() => openInExternalBrowser(false)}
+              className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 transition-all cursor-pointer active:scale-98"
             >
-              {isCopiedBoth ? (
-                <Check className="w-4 h-4 text-emerald-600" />
-              ) : (
-                <Copy className="w-4 h-4 text-red-600" />
-              )}
-              <span>{isCopiedBoth ? 'Login e Senha Copiados!' : 'Copiar Login + Senha'}</span>
+              <ExternalLink className="w-4 h-4" />
+              <span>Abrir no Chrome / Safari</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setShowPass(!showPass)}
-              title={showPass ? 'Ocultar Senha' : 'Ver Senha'}
-              className="p-3 text-slate-500 hover:text-red-600 bg-slate-50 hover:bg-white rounded-xl border border-slate-200 transition-all cursor-pointer shadow-2xs"
+              onClick={() => openInExternalBrowser(true)}
+              className="py-2.5 px-3 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              title="Força o navegador a carregar a página real do novo modem sem usar o cache do modem anterior"
             >
-              {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              <RotateCw className="w-3.5 h-3.5 text-amber-700" />
+              <span>Abrir sem Cache</span>
             </button>
+          </div>
+
+          {/* Dica para Modens no mesmo IP */}
+          <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-3 flex flex-col gap-1.5 text-xs text-amber-950 shadow-2xs">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-extrabold text-amber-950 block text-xs">
+                  Apareceu a tela do modem anterior no Chrome ou Safari?
+                </span>
+                <p className="text-amber-800 text-[11px] leading-relaxed mt-0.5">
+                  Como modems de marcas diferentes usam o mesmo IP (<strong className="font-mono text-amber-950">{modem.ip}</strong>), o Chrome guarda o visual do modem antigo na memória.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-200/80 text-[11px]">
+              <span className="font-bold text-amber-900">Solução Rápida:</span>
+              <button
+                type="button"
+                onClick={() => openInExternalBrowser(true)}
+                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer transition-all shadow-2xs"
+              >
+                1. Toque em "Abrir sem Cache"
+              </button>
+              <span className="text-amber-700 font-semibold">ou</span>
+              <span className="bg-white px-2 py-0.5 rounded border border-amber-200 text-amber-900 font-medium">
+                2. Abra em <strong>Guia Anônima</strong> do Chrome
+              </span>
+            </div>
+          </div>
+
+          {/* Quick Copy Action Bar - Separate Copiar Usuário and Copiar Senha */}
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => copyText(modem.username, 'user')}
+                className="py-3 px-3 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
+              >
+                {isCopiedUser ? (
+                  <Check className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <Copy className="w-4 h-4 text-red-600" />
+                )}
+                <span>{isCopiedUser ? 'Usuário Copiado!' : 'Copiar Usuário'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => copyText(modem.password, 'pass')}
+                className="py-3 px-3 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
+              >
+                {isCopiedPass ? (
+                  <Check className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <Key className="w-4 h-4 text-red-600" />
+                )}
+                <span>{isCopiedPass ? 'Senha Copiada!' : 'Copiar Senha'}</span>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between px-1 text-xs text-slate-500">
+              <span className="text-[11px]">
+                {isCopiedUser ? (
+                  <span className="text-emerald-700 font-bold">✓ Usuário na área de transferência (Cole no Login)</span>
+                ) : isCopiedPass ? (
+                  <span className="text-emerald-700 font-bold">✓ Senha na área de transferência (Cole na Senha)</span>
+                ) : (
+                  <span>Toque para copiar individualmente sem misturar</span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="text-[11px] text-red-600 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer"
+              >
+                {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span>{showPass ? 'Ocultar' : 'Ver Senha'}</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -432,18 +585,28 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
           <div className="bg-white p-3.5 rounded-2xl border border-red-100 flex flex-col justify-between shadow-2xs">
             <div>
-              <span className="text-[10px] font-bold uppercase text-red-600 font-mono block">Opção 1 (Mais Prática)</span>
-              <p className="text-xs text-slate-800 font-bold mt-0.5">Copiar Login e Senha com 1 Toque</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Copia ambos para a área de transferência. Basta colar nos campos da página do roteador.</p>
+              <span className="text-[10px] font-bold uppercase text-red-600 font-mono block">Opção 1 (Recomendada)</span>
+              <p className="text-xs text-slate-800 font-bold mt-0.5">Copiar Separadamente com 1 Toque</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Copia o login e depois a senha individualmente para não misturar os campos.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
-              className="mt-2.5 py-2 px-3 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              <span>{isCopiedBoth ? 'Copiados com Sucesso!' : 'Copiar Login e Senha'}</span>
-            </button>
+            <div className="grid grid-cols-2 gap-1.5 mt-2.5">
+              <button
+                type="button"
+                onClick={() => copyText(modem.username, 'user')}
+                className="py-2 px-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+              >
+                <Copy className="w-3 h-3" />
+                <span>{isCopiedUser ? 'Copiado!' : '1º Usuário'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => copyText(modem.password, 'pass')}
+                className="py-2 px-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+              >
+                <Key className="w-3 h-3" />
+                <span>{isCopiedPass ? 'Copiada!' : '2º Senha'}</span>
+              </button>
+            </div>
           </div>
 
           <div className="bg-white p-3.5 rounded-2xl border border-red-100 flex flex-col justify-between shadow-2xs">
@@ -529,14 +692,14 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
               <div className="w-full bg-white border border-slate-200 rounded-3xl p-6 shadow-md relative overflow-hidden">
                 {/* Brand Banner */}
                 <div className="flex flex-col items-center mb-6">
-                  <div className="px-3 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 font-mono text-xs font-bold uppercase tracking-wider mb-2">
-                    {modem.brand} • {modem.model}
+                  <div className={`px-3 py-1 rounded-full font-mono text-xs font-bold uppercase tracking-wider mb-2 border ${brandTheme.badgeBg}`}>
+                    {brandTheme.name} {modem.model ? `• ${modem.model}` : ''}
                   </div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                    Acesso à Configuração
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight text-center">
+                    {brandTheme.themeTitle}
                   </h3>
                   <p className="text-xs text-slate-500 text-center mt-1">
-                    Credenciais extraídas da etiqueta do equipamento.
+                    Interface e credenciais lidas para este equipamento.
                   </p>
                 </div>
 
@@ -635,18 +798,18 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
               {/* Modem Dashboard Header Claro */}
               <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600 font-bold font-mono">
-                    {modem.brand.slice(0, 2).toUpperCase()}
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold font-mono border shadow-2xs ${brandTheme.badgeBg}`}>
+                    {brandTheme.name.slice(0, 2).toUpperCase()}
                   </div>
                   <div>
                     <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                      <span>{modem.brand} {modem.model}</span>
+                      <span>{brandTheme.name} {modem.model}</span>
                       <span className="text-[10px] font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
-                        ONLINE • FIBRA 600 Mbps
+                        ONLINE • {modem.ip}
                       </span>
                     </h3>
                     <p className="text-xs text-slate-500 font-mono">
-                      IP LAN: {modem.ip} • WAN: 177.132.84.19 (Pública)
+                      {brandTheme.themeTitle} • Gateway: {modem.ip}
                     </p>
                   </div>
                 </div>

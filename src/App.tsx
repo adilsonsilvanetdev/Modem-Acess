@@ -293,6 +293,7 @@ export default function App() {
 
           {activeTab === 'browser' && activeModem && (
             <ModemBrowserSimulator
+              key={`browser-${activeModem.id}-${activeModem.brand}-${activeModem.model}-${activeModem.scannedAt}`}
               modem={activeModem}
               onUpdateModem={handleUpdateModem}
               onFinishAccess={handleFinishAccess}
@@ -322,6 +323,7 @@ export default function App() {
 
           {activeTab === 'credentials' && activeModem && (
             <ModemCredentialsCard
+              key={`creds-${activeModem.id}-${activeModem.brand}-${activeModem.model}-${activeModem.scannedAt}`}
               modem={activeModem}
               onUpdate={handleUpdateModem}
               onOpenBrowser={() => setActiveTab('browser')}
