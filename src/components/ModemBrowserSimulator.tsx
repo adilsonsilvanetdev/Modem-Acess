@@ -279,8 +279,8 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     }
   };
 
-  // Open in Real External Native Browser (Chrome/Safari) with Anti-Cache
-  const openInExternalBrowser = async (forceNoCache: boolean = false) => {
+  // Open in Real External Native Browser (Chrome/Safari) with Automatic Anti-Cache
+  const openInExternalBrowser = async (forceNoCache: boolean = true) => {
     const rawIp = modem.ip.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
     // Cache buster: when changing modems on the same IP (e.g. 192.168.1.1),
     // a timestamp param tells Chrome to request the real physical router instead of the cached page of the previous router
@@ -451,56 +451,36 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
           </button>
         </div>
 
-        {/* Primary Action Button in VIBRANT RED & Anti-Cache Button */}
+        {/* Primary Action Button in VIBRANT RED com Anti-Cache Automático */}
         <div className="pt-1 border-t border-slate-100 flex flex-col gap-2">
-          <div className="flex flex-col sm:flex-row gap-2">
+          <button
+            type="button"
+            onClick={() => openInExternalBrowser(true)}
+            className="w-full py-3.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 transition-all cursor-pointer active:scale-98"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span>Abrir no Chrome / Safari</span>
+            <span className="text-[10px] font-mono font-bold bg-white/20 text-white px-2 py-0.5 rounded-full ml-1">
+              Anti-Cache Ativo
+            </span>
+          </button>
+
+          {/* Dica para Modens no mesmo IP */}
+          <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-2.5 flex items-center justify-between text-xs text-amber-950 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span className="text-[11px] text-amber-900 leading-tight">
+                <strong>Anti-Cache Automático:</strong> Sempre carrega a página real do novo modem, mesmo no mesmo IP.
+              </span>
+            </div>
             <button
               type="button"
               onClick={() => openInExternalBrowser(false)}
-              className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 transition-all cursor-pointer active:scale-98"
+              className="text-[10px] text-slate-500 hover:text-slate-800 underline cursor-pointer ml-2 whitespace-nowrap"
+              title="Abrir URL padrão sem parâmetro"
             >
-              <ExternalLink className="w-4 h-4" />
-              <span>Abrir no Chrome / Safari</span>
+              Link padrão
             </button>
-
-            <button
-              type="button"
-              onClick={() => openInExternalBrowser(true)}
-              className="py-2.5 px-3 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-              title="Força o navegador a carregar a página real do novo modem sem usar o cache do modem anterior"
-            >
-              <RotateCw className="w-3.5 h-3.5 text-amber-700" />
-              <span>Abrir sem Cache</span>
-            </button>
-          </div>
-
-          {/* Dica para Modens no mesmo IP */}
-          <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-3 flex flex-col gap-1.5 text-xs text-amber-950 shadow-2xs">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <span className="font-extrabold text-amber-950 block text-xs">
-                  Apareceu a tela do modem anterior no Chrome ou Safari?
-                </span>
-                <p className="text-amber-800 text-[11px] leading-relaxed mt-0.5">
-                  Como modems de marcas diferentes usam o mesmo IP (<strong className="font-mono text-amber-950">{modem.ip}</strong>), o Chrome guarda o visual do modem antigo na memória.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-200/80 text-[11px]">
-              <span className="font-bold text-amber-900">Solução Rápida:</span>
-              <button
-                type="button"
-                onClick={() => openInExternalBrowser(true)}
-                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer transition-all shadow-2xs"
-              >
-                1. Toque em "Abrir sem Cache"
-              </button>
-              <span className="text-amber-700 font-semibold">ou</span>
-              <span className="bg-white px-2 py-0.5 rounded border border-amber-200 text-amber-900 font-medium">
-                2. Abra em <strong>Guia Anônima</strong> do Chrome
-              </span>
-            </div>
           </div>
 
           {/* Quick Copy Action Bar - Somente UM botão para Copiar Login + Senha */}
