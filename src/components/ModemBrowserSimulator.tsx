@@ -135,6 +135,8 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   const [isCopiedBoth, setIsCopiedBoth] = useState<boolean>(false);
   const [isCopiedPass, setIsCopiedPass] = useState<boolean>(false);
   const [isCopiedUser, setIsCopiedUser] = useState<boolean>(false);
+  const [isCopiedWifiPass, setIsCopiedWifiPass] = useState<boolean>(false);
+  const [isCopiedIncognito, setIsCopiedIncognito] = useState<boolean>(false);
   const [isCopiedBookmarklet, setIsCopiedBookmarklet] = useState<boolean>(false);
   const [showPass, setShowPass] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'wifi' | 'devices' | 'tools'>('dashboard');
@@ -282,6 +284,8 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   // Open in Real External Native Browser (Chrome/Safari)
   const openInExternalBrowser = async (forceNoCache: boolean = false) => {
     const rawIp = modem.ip.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+    // Unique window target so mobile Chrome/Safari never reuses an already-open tab/process from the previous modem
+    const windowName = `modem_tab_${Date.now()}`;
     const target = forceNoCache ? `http://${rawIp}/?_nocache=${Date.now()}` : `http://${rawIp}/`;
 
     // Auto copy login + password together (como era na versão anterior)
@@ -289,7 +293,20 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     setIsCopiedBoth(true);
     setTimeout(() => setIsCopiedBoth(false), 3000);
 
-    window.open(target, '_blank');
+    window.open(target, windowName);
+  };
+
+  const copyWifiPassword = async (passText: string) => {
+    await copyToClipboardSafe(passText);
+    setIsCopiedWifiPass(true);
+    setTimeout(() => setIsCopiedWifiPass(false), 2500);
+  };
+
+  const copyLinkForIncognito = async () => {
+    const rawIp = modem.ip.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+    await copyToClipboardSafe(`http://${rawIp}/`);
+    setIsCopiedIncognito(true);
+    setTimeout(() => setIsCopiedIncognito(false), 3000);
   };
 
   // Bulletproof Universal Auto-Fill Script for any router/modem
@@ -449,6 +466,52 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
           </button>
         </div>
 
+        {/* PASSO 1: VERIFICAÇÃO CRÍTICA DE WI-FI AO TESTAR MÚLTIPLOS MODENS NO MESMO IP */}
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3.5 flex flex-col gap-2.5 shadow-2xs">
+          <div className="flex items-start gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 flex-shrink-0 mt-0.5">
+              <Wifi className="w-4 h-4" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-amber-950 text-xs">
+                  Passo 1: Conectar no Wi-Fi DESTE Modem
+                </span>
+                <span className="text-[9px] font-bold uppercase bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
+                  Obrigatório
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
+                ⚠️ <strong>Atenção:</strong> Se o seu celular continuar conectado no Wi-Fi do primeiro modem (ou no 4G), ao abrir <code className="font-mono font-bold bg-white px-1 py-0.2 rounded border border-amber-300">{modem.ip}</code> o navegador <strong>sempre continuará acessando a página do primeiro modem</strong>!
+              </p>
+            </div>
+          </div>
+
+          {/* Dados do Wi-Fi deste modem */}
+          <div className="bg-white/95 rounded-xl p-2.5 border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+            <div className="flex flex-col">
+              <span className="text-[9px] uppercase font-bold text-slate-400 font-mono">Rede Wi-Fi deste modem</span>
+              <span className="font-black text-slate-900 font-mono">{modem.wifiSsid || `${modem.brand} (conforme etiqueta)`}</span>
+            </div>
+            {modem.wifiPassword && (
+              <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                <div className="flex flex-col text-right sm:text-left">
+                  <span className="text-[9px] uppercase font-bold text-slate-400 font-mono">Senha Wi-Fi</span>
+                  <span className="font-bold text-red-700 font-mono">{modem.wifiPassword}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copyWifiPassword(modem.wifiPassword || '')}
+                  className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>{isCopiedWifiPass ? 'Copiada!' : 'Copiar'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Primary Action Button in VIBRANT RED & Anti-Cache Button */}
         <div className="pt-1 border-t border-slate-100 flex flex-col gap-2">
           <div className="flex flex-col sm:flex-row gap-2">
@@ -471,6 +534,22 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
               <span>Abrir sem Cache</span>
             </button>
           </div>
+
+          {/* Dica Guia Anônima do Chrome */}
+          <button
+            type="button"
+            onClick={copyLinkForIncognito}
+            className="w-full py-2 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-700 font-bold flex items-center justify-between cursor-pointer transition-all"
+            title="Copiar link para colar em uma Guia Anônima do navegador"
+          >
+            <div className="flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-slate-600" />
+              <span>{isCopiedIncognito ? '✓ Link copiado! Cole na Guia Anônima do Chrome' : 'Recomendado ao testar vários modens: Abrir em Guia Anônima'}</span>
+            </div>
+            <span className="text-[10px] text-red-600 font-bold uppercase underline">
+              {isCopiedIncognito ? 'Copiado' : 'Copiar Link'}
+            </span>
+          </button>
 
           {/* Quick Copy Action Bar - Somente UM botão para Copiar Login + Senha */}
           <div className="flex items-center gap-2">
