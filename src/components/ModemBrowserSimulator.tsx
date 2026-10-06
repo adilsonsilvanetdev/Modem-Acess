@@ -132,7 +132,6 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   const [authStep, setAuthStep] = useState<'idle' | 'typing_user' | 'typing_pass' | 'submitting' | 'logged_in'>('idle');
   const [typedUser, setTypedUser] = useState<string>('');
   const [typedPass, setTypedPass] = useState<string>('');
-  const [isCopiedBoth, setIsCopiedBoth] = useState<boolean>(false);
   const [isCopiedPass, setIsCopiedPass] = useState<boolean>(false);
   const [isCopiedUser, setIsCopiedUser] = useState<boolean>(false);
   const [isCopiedWifiPass, setIsCopiedWifiPass] = useState<boolean>(false);
@@ -264,36 +263,39 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   }, [modem.id, modem.ip, modem.username, modem.password, modem.wifiSsid, modem.wifiPassword, modem.brand]);
 
   // Copy to clipboard helper with iOS Safari fallback
-  const copyText = async (text: string, type: 'pass' | 'user' | 'both' | 'bookmarklet') => {
+  const copyText = async (text: string, type: 'pass' | 'user' | 'bookmarklet') => {
     await copyToClipboardSafe(text);
     if (type === 'pass') {
       setIsCopiedPass(true);
-      setTimeout(() => setIsCopiedPass(false), 2200);
+      setTimeout(() => setIsCopiedPass(false), 2500);
     } else if (type === 'user') {
       setIsCopiedUser(true);
-      setTimeout(() => setIsCopiedUser(false), 2200);
-    } else if (type === 'both') {
-      setIsCopiedBoth(true);
-      setTimeout(() => setIsCopiedBoth(false), 2200);
+      setTimeout(() => setIsCopiedUser(false), 2500);
     } else {
       setIsCopiedBookmarklet(true);
-      setTimeout(() => setIsCopiedBookmarklet(false), 2200);
+      setTimeout(() => setIsCopiedBookmarklet(false), 2500);
     }
   };
 
   // Open in Real External Native Browser (Chrome/Safari)
   const openInExternalBrowser = async (forceNoCache: boolean = false) => {
     const rawIp = modem.ip.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
-    // Unique window target so mobile Chrome/Safari never reuses an already-open tab/process from the previous modem
-    const windowName = `modem_tab_${Date.now()}`;
-    const target = forceNoCache ? `http://${rawIp}/?_nocache=${Date.now()}` : `http://${rawIp}/`;
+    const target = `http://${rawIp}/`;
 
-    // Auto copy login + password together (como era na versão anterior)
-    await copyToClipboardSafe(`${modem.username}\n${modem.password}`);
-    setIsCopiedBoth(true);
-    setTimeout(() => setIsCopiedBoth(false), 3000);
+    // Auto copy ONLY username so when tapping paste in Login, it pastes ONLY the username
+    await copyToClipboardSafe(modem.username);
+    setIsCopiedUser(true);
+    setTimeout(() => setIsCopiedUser(false), 3000);
 
-    window.open(target, windowName);
+    if (forceNoCache) {
+      // Para sem cache, também copia o link limpo para colar em Guia Anônima se necessário
+      await copyToClipboardSafe(`http://${rawIp}/`);
+      setIsCopiedIncognito(true);
+      setTimeout(() => setIsCopiedIncognito(false), 3500);
+    }
+
+    // Sempre abre em nova aba limpa
+    window.open(target, '_blank');
   };
 
   const copyWifiPassword = async (passText: string) => {
@@ -482,7 +484,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
-                ⚠️ <strong>Atenção:</strong> Se o seu celular continuar conectado no Wi-Fi do primeiro modem (ou no 4G), ao abrir <code className="font-mono font-bold bg-white px-1 py-0.2 rounded border border-amber-300">{modem.ip}</code> o navegador <strong>sempre continuará acessando a página do primeiro modem</strong>!
+                ⚠️ <strong>Atenção ao testar vários modens:</strong> Se o seu celular continuar conectado no Wi-Fi do modem anterior (ou no 4G), ao abrir <code className="font-mono font-bold bg-white px-1 py-0.2 rounded border border-amber-300">{modem.ip}</code> o navegador <strong>sempre continuará acessando a página do primeiro modem</strong>! Conecte no Wi-Fi deste aparelho e feche a aba antiga no Chrome (ou use Guia Anônima).
               </p>
             </div>
           </div>
@@ -551,29 +553,55 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             </span>
           </button>
 
-          {/* Quick Copy Action Bar - Somente UM botão para Copiar Login + Senha */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
-              className="flex-1 py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
-            >
-              {isCopiedBoth ? (
-                <Check className="w-4 h-4 text-emerald-600" />
-              ) : (
-                <Copy className="w-4 h-4 text-red-600" />
-              )}
-              <span>{isCopiedBoth ? 'Login e Senha Copiados Juntos!' : 'Copiar Login + Senha'}</span>
-            </button>
+          {/* Quick Copy Action Bar - Separado Usuário e Senha para não colar tudo junto no login */}
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => copyText(modem.username, 'user')}
+                className="py-3 px-3 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
+              >
+                {isCopiedUser ? (
+                  <Check className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <Copy className="w-4 h-4 text-red-600" />
+                )}
+                <span>{isCopiedUser ? 'Usuário Copiado!' : '1º Copiar Usuário'}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setShowPass(!showPass)}
-              title={showPass ? 'Ocultar Senha' : 'Ver Senha'}
-              className="p-3 text-slate-500 hover:text-red-600 bg-slate-50 hover:bg-white rounded-xl border border-slate-200 transition-all cursor-pointer shadow-2xs"
-            >
-              {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
+              <button
+                type="button"
+                onClick={() => copyText(modem.password, 'pass')}
+                className="py-3 px-3 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
+              >
+                {isCopiedPass ? (
+                  <Check className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <Key className="w-4 h-4 text-red-600" />
+                )}
+                <span>{isCopiedPass ? 'Senha Copiada!' : '2º Copiar Senha'}</span>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between px-1 text-xs text-slate-500">
+              <span className="text-[11px]">
+                {isCopiedUser ? (
+                  <span className="text-emerald-700 font-bold">✓ Usuário pronto: cole no campo de Login</span>
+                ) : isCopiedPass ? (
+                  <span className="text-emerald-700 font-bold">✓ Senha pronta: cole no campo de Senha</span>
+                ) : (
+                  <span>Copie um por vez para não misturar os campos no roteador</span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="text-[11px] text-red-600 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer"
+              >
+                {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span>{showPass ? 'Ocultar' : 'Ver Senha'}</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1161,22 +1189,34 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
               <div className="space-y-2">
                 <p className="font-bold text-slate-800">Escolha a forma mais prática para você:</p>
                 
-                <div className="border border-slate-200 p-3.5 rounded-2xl flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px]">1</span>
-                      Copiar Login e Senha em 1 Toque (Recomendado)
-                    </span>
+                <div className="border border-slate-200 p-3.5 rounded-2xl flex flex-col gap-2">
+                  <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px]">1</span>
+                    Copiar Separadamente (Sem Erro de Acesso)
+                  </span>
+                  <p className="text-[11px] text-slate-600">
+                    Copie cada dado individualmente para não colar tudo junto no campo de login:
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 mt-0.5">
                     <button
                       type="button"
-                      onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
-                      className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-xs"
+                      onClick={() => copyText(modem.username, 'user')}
+                      className="py-2 px-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                     >
-                      {isCopiedBoth ? 'Copiados!' : 'Copiar Login e Senha'}
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>{isCopiedUser ? 'Usuário Copiado!' : '1º Copiar Usuário'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => copyText(modem.password, 'pass')}
+                      className="py-2 px-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Key className="w-3.5 h-3.5" />
+                      <span>{isCopiedPass ? 'Senha Copiada!' : '2º Copiar Senha'}</span>
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    Ao tocar em <strong>"Abrir no Chrome / Safari"</strong> ou em <strong>"Copiar Login e Senha"</strong>, seus dados já vão para a memória do celular. Basta colar na página de login!
+                  <p className="text-[10px] text-slate-500">
+                    Cole o usuário no Login e depois a senha no campo de Senha.
                   </p>
                 </div>
 
