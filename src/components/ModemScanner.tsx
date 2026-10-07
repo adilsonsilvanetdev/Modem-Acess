@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Camera,
   RefreshCw,
@@ -7,6 +7,9 @@ import {
   AlertCircle,
   Scan,
   ImageIcon,
+  Zap,
+  ZapOff,
+  Video,
 } from 'lucide-react';
 import { ScannedModem } from '../types';
 
@@ -21,13 +24,134 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
   activeModem,
   onFinishAccess,
 }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
   const nativeCameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+
+  const [isLiveCameraActive, setIsLiveCameraActive] = useState<boolean>(false);
+  const [liveCameraLoading, setLiveCameraLoading] = useState<boolean>(true);
+  const [torchEnabled, setTorchEnabled] = useState<boolean>(false);
+  const [hasTorchSupport, setHasTorchSupport] = useState<boolean>(false);
 
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanStatusStep, setScanStatusStep] = useState<string>('');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [capturedImagePreview, setCapturedImagePreview] = useState<string | null>(null);
+
+  // Stop live camera stream safely
+  const stopLiveCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsLiveCameraActive(false);
+    setTorchEnabled(false);
+  }, []);
+
+  // Start live camera stream automatically when app opens
+  const startLiveCamera = useCallback(async () => {
+    setLiveCameraLoading(true);
+    setCameraError(null);
+    stopLiveCamera();
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Acesso direto à câmera em tempo real não suportado neste navegador. Use o botão Tirar Foto.');
+      }
+
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920, min: 1280 },
+          height: { ideal: 1080, min: 720 },
+        },
+        audio: false,
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+
+      // Check flashlight/torch support
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        const capabilities: any = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+        if (capabilities.torch) {
+          setHasTorchSupport(true);
+        }
+      }
+
+      setIsLiveCameraActive(true);
+      setLiveCameraLoading(false);
+    } catch (err: any) {
+      console.warn('Câmera automática ao vivo não pôde iniciar:', err?.message || err);
+      setIsLiveCameraActive(false);
+      setLiveCameraLoading(false);
+    }
+  }, [stopLiveCamera]);
+
+  // Start automatic scanner when opening the app
+  useEffect(() => {
+    startLiveCamera();
+    return () => {
+      stopLiveCamera();
+    };
+  }, [startLiveCamera, stopLiveCamera]);
+
+  // Toggle Torch/Flashlight if available
+  const toggleTorch = async () => {
+    if (!streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0] as any;
+    if (track && track.applyConstraints) {
+      try {
+        const nextState = !torchEnabled;
+        await track.applyConstraints({
+          advanced: [{ torch: nextState }],
+        });
+        setTorchEnabled(nextState);
+      } catch (e) {
+        console.warn('Erro ao alternar lanterna:', e);
+      }
+    }
+  };
+
+  // Capture current sharp frame from live video scanner
+  const captureFrameFromLiveVideo = async () => {
+    if (!videoRef.current || !isLiveCameraActive) {
+      openNativeCamera();
+      return;
+    }
+
+    try {
+      const video = videoRef.current;
+      const width = video.videoWidth || 1280;
+      const height = video.videoHeight || 720;
+
+      const canvas = canvasRef.current || document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Não foi possível inicializar o canvas de captura');
+
+      ctx.drawImage(video, 0, 0, width, height);
+      // High quality JPEG so numbers on router labels remain crisp
+      const highResDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+      setCapturedImagePreview(highResDataUrl);
+      await processImageForModemData(highResDataUrl);
+    } catch (err: any) {
+      console.warn('Falha ao capturar do vídeo ao vivo:', err);
+      openNativeCamera();
+    }
+  };
 
   // Open native mobile camera app
   const openNativeCamera = () => {
@@ -45,7 +169,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     }
   };
 
-  // Compress image to fast lightweight JPEG (<150KB) so upload takes under 200ms
+  // Compress image preserving sharp label details (max 1600px with 0.90 quality for crisp IP numbers)
   const compressImageFile = async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -56,7 +180,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         img.onerror = () => resolve(rawData);
         img.onload = () => {
           try {
-            const maxDim = 1024;
+            const maxDim = 1600;
             let { width, height } = img;
             if (width > maxDim || height > maxDim) {
               if (width > height) {
@@ -73,7 +197,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
             const ctx = canvas.getContext('2d');
             if (ctx) {
               ctx.drawImage(img, 0, 0, width, height);
-              resolve(canvas.toDataURL('image/jpeg', 0.72));
+              resolve(canvas.toDataURL('image/jpeg', 0.90));
               return;
             }
             resolve(rawData);
@@ -87,27 +211,26 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     });
   };
 
-  // Process image with Gemini API (fast response with timeout)
+  // Process image with Gemini API
   const processImageForModemData = async (base64Data: string) => {
     if (!base64Data || base64Data.length < 50) {
       setIsScanning(false);
-      setCameraError('Não foi possível ler a foto capturada. Por favor, tire outra foto da etiqueta.');
+      setCameraError('Não foi possível ler a foto capturada. Por favor, tente tirar uma nova foto da etiqueta.');
       return;
     }
 
     setIsScanning(true);
     setCameraError(null);
-    setScanStatusStep('Analisando etiqueta do roteador com IA...');
+    setScanStatusStep('Foto nítida capturada! Analisando etiqueta...');
 
     const controller = new AbortController();
     const timeoutTimer = setTimeout(() => {
       controller.abort();
-    }, 18000);
+    }, 35000);
 
     try {
-      setScanStatusStep('Localizando IP, Usuário e Senha na foto...');
+      setScanStatusStep('Identificando IP, Usuário e Senha na foto...');
 
-      // Call server-side Gemini API endpoint
       const response = await fetch('/api/scan-modem-label', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -127,7 +250,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         throw new Error(serverError);
       }
 
-      setScanStatusStep('Extraindo credenciais reais da sua foto...');
+      setScanStatusStep('Extraindo dados de acesso e preparando conexão...');
 
       if (result.success && result.data) {
         const parsed = result.data;
@@ -151,9 +274,10 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
           sourceImage: base64Data,
         };
 
-        setScanStatusStep(`Identificado: ${brandName}! Conectando e preenchendo...`);
+        setScanStatusStep(`IP ${scannedModem.ip} detectado! Abrindo página...`);
         setTimeout(() => {
           setIsScanning(false);
+          stopLiveCamera();
           onScanSuccess(scannedModem);
         }, 500);
         return;
@@ -165,7 +289,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
       console.warn('Erro ao processar imagem:', err);
       setIsScanning(false);
       if (err?.name === 'AbortError') {
-        setCameraError('A leitura demorou muito para responder. Por favor, tente tirar uma nova foto mais nítida ou mais próxima da etiqueta.');
+        setCameraError('A leitura demorou para responder. Verifique sua conexão e tente tirar a foto novamente com boa iluminação.');
       } else {
         const rawMsg = err?.message || 'Falha ao processar a foto da etiqueta.';
         setCameraError(rawMsg);
@@ -184,7 +308,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     try {
       setIsScanning(true);
       setCameraError(null);
-      setScanStatusStep('Otimizando foto capturada...');
+      setScanStatusStep('Otimizando foto em alta resolução...');
 
       const optimizedBase64 = await compressImageFile(file);
       setCapturedImagePreview(optimizedBase64);
@@ -197,7 +321,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-5 w-full max-w-xl mx-auto">
+    <div className="flex flex-col gap-4 w-full max-w-xl mx-auto">
       {/* Hidden Inputs for Native Camera & Gallery */}
       <input
         ref={nativeCameraInputRef}
@@ -218,26 +342,27 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         tabIndex={-1}
         aria-hidden="true"
       />
+      <canvas ref={canvasRef} className="hidden" />
 
-      {/* Header Info */}
+      {/* Header Info - Texto Principal alterado para Acesso Configurações do Modem */}
       <div className="flex flex-col gap-1.5 text-center px-2">
         <div className="inline-flex items-center justify-center gap-2 self-center px-3 py-1 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-semibold shadow-xs">
           <Sparkles className="w-3.5 h-3.5 text-red-600 animate-spin" style={{ animationDuration: '6s' }} />
-          <span>Leitura de Etiqueta com IA</span>
+          <span>Scanner Automático com IA</span>
         </div>
         <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-          Fotografar Etiqueta do Modem
+          Acesso Configurações do Modem
         </h2>
         <p className="text-xs sm:text-sm text-slate-600">
-          Tire uma foto da etiqueta com <span className="text-red-600 font-bold">IP, Usuário e Senha</span> para preencher automaticamente na página do modem.
+          Aponte a câmera para a etiqueta com <span className="text-red-600 font-bold">IP, Usuário e Senha</span> para preencher automaticamente na página do modem.
         </p>
       </div>
 
-      {/* Main Action Area */}
-      <div className="relative w-full rounded-3xl overflow-hidden border-2 border-slate-200 bg-white shadow-sm flex flex-col justify-center items-center transition-all p-5 sm:p-7 min-h-[360px]">
-        {/* Loading / Analyzing State */}
+      {/* Main Scanner Viewport Area */}
+      <div className="relative w-full rounded-3xl overflow-hidden border-2 border-slate-200 bg-slate-950 shadow-md flex flex-col justify-center items-center transition-all min-h-[380px] h-[380px] sm:h-[420px]">
+        {/* Loading / Analyzing Overlay */}
         {isScanning && (
-          <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-4 p-6 z-20">
+          <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-4 p-6 z-30">
             <div className="relative">
               <div className="w-20 h-20 rounded-full border-4 border-red-500/20 border-t-red-500 animate-spin" />
               <div className="absolute inset-0 flex items-center justify-center">
@@ -248,95 +373,201 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
               <h3 className="text-base font-bold text-white mb-1">
                 Lendo Etiqueta do Roteador...
               </h3>
-              <p className="text-xs text-red-400 font-mono animate-pulse-subtle">
+              <p className="text-xs text-red-400 font-mono">
                 {scanStatusStep}
               </p>
             </div>
           </div>
         )}
 
-        {/* Captured Image Preview */}
+        {/* Captured Preview Mode if image was taken */}
         {capturedImagePreview && !isScanning ? (
-          <div className="relative w-full flex flex-col items-center gap-4">
-            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 flex items-center justify-center shadow-inner">
-              <img
-                src={capturedImagePreview}
-                alt="Etiqueta Capturada"
-                className="w-full h-full object-contain"
-              />
+          <div className="relative w-full h-full flex flex-col items-center justify-center bg-slate-950 p-3">
+            <img
+              src={capturedImagePreview}
+              alt="Etiqueta Capturada"
+              className="w-full h-full object-contain rounded-2xl"
+            />
+            <div className="absolute bottom-4 left-4 right-4 flex items-center gap-2 z-20">
+              <button
+                type="button"
+                onClick={() => {
+                  setCapturedImagePreview(null);
+                  startLiveCamera();
+                }}
+                className="flex-1 py-3 px-4 bg-white/95 hover:bg-white text-slate-900 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg cursor-pointer"
+              >
+                <RefreshCw className="w-4 h-4 text-red-600" />
+                <span>Voltar ao Scanner</span>
+              </button>
               <button
                 type="button"
                 onClick={openNativeCamera}
-                className="absolute top-3 right-3 px-3 py-1.5 rounded-full bg-white text-slate-800 border border-slate-300 text-xs font-semibold flex items-center gap-1.5 hover:bg-slate-100 transition-all z-10 cursor-pointer shadow-md"
+                className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg cursor-pointer"
               >
-                <RefreshCw className="w-3.5 h-3.5 text-red-600" />
+                <Camera className="w-4 h-4" />
                 <span>Tirar Outra Foto</span>
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={openNativeCamera}
-              className="w-full py-3.5 px-6 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-2xl text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg shadow-red-600/25 active:scale-98 transition-all cursor-pointer"
-            >
-              <Camera className="w-5 h-5 text-white" />
-              <span>Tirar Outra Foto da Etiqueta</span>
-            </button>
           </div>
-        ) : (
-          /* Standby: ONLY the clean "Tirar Foto" button */
-          !isScanning && (
-            <div className="flex flex-col items-center justify-center text-center z-10 gap-5 max-w-md w-full my-auto py-4">
-              <div className="relative">
-                <div className="w-20 h-20 rounded-3xl bg-red-50 border-2 border-red-200 flex items-center justify-center text-red-600 shadow-sm">
-                  <Camera className="w-10 h-10" />
+        ) : isLiveCameraActive ? (
+          /* 1. Live Camera Scanner Mode (Ativo Automaticamente ao Abrir) */
+          <div className="relative w-full h-full overflow-hidden flex items-center justify-center bg-black">
+            <video
+              ref={videoRef}
+              playsInline
+              autoPlay
+              muted
+              className="w-full h-full object-cover"
+            />
+
+            {/* Viewfinder Target Reticle / Scanning Frame */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-6">
+              <div className="relative w-full max-w-[320px] aspect-[4/3] rounded-2xl border-2 border-red-500/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]">
+                {/* Corner Marks */}
+                <div className="absolute -top-1.5 -left-1.5 w-6 h-6 border-t-4 border-l-4 border-red-500 rounded-tl-lg" />
+                <div className="absolute -top-1.5 -right-1.5 w-6 h-6 border-t-4 border-r-4 border-red-500 rounded-tr-lg" />
+                <div className="absolute -bottom-1.5 -left-1.5 w-6 h-6 border-b-4 border-l-4 border-red-500 rounded-bl-lg" />
+                <div className="absolute -bottom-1.5 -right-1.5 w-6 h-6 border-b-4 border-r-4 border-red-500 rounded-br-lg" />
+
+                {/* Animated Red Laser Scanning Line */}
+                <div
+                  className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-red-500 to-transparent shadow-[0_0_12px_#ef4444]"
+                  style={{
+                    animation: 'scannerLaser 2.2s ease-in-out infinite alternate',
+                  }}
+                />
+
+                {/* Center crosshair */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-full border border-red-500/30 flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-red-500/60" />
+                  </div>
                 </div>
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center text-xs font-black shadow-md border-2 border-white">
-                  +
+
+                <div className="absolute -bottom-7 left-0 right-0 text-center">
+                  <span className="text-[11px] font-bold text-white bg-slate-900/80 px-2.5 py-1 rounded-full border border-red-500/40">
+                    Posicione o IP e a Senha no quadro
+                  </span>
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-1.5 px-2">
-                <h3 className="text-lg font-black text-slate-900 tracking-tight">
-                  Tirar Foto da Etiqueta
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-xs mx-auto">
-                  Toque no botão abaixo para abrir a câmera do celular e fotografar a etiqueta na traseira do modem.
-                </p>
+            {/* Top Bar Controls (Flashlight, Camera Status) */}
+            <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10 pointer-events-auto">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/70 backdrop-blur-md border border-slate-700/80 text-[11px] text-white font-medium">
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                <span>Scanner Ativo</span>
               </div>
 
-              {/* ONLY Primary Button: Tirar Foto */}
-              <div className="flex flex-col w-full gap-2.5 pt-2">
+              {hasTorchSupport && (
+                <button
+                  type="button"
+                  onClick={toggleTorch}
+                  className={`p-2 rounded-full border backdrop-blur-md transition-all cursor-pointer ${
+                    torchEnabled
+                      ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md'
+                      : 'bg-slate-900/70 text-white border-slate-700/80'
+                  }`}
+                  title="Lanterna / Flash"
+                >
+                  {torchEnabled ? <Zap className="w-4 h-4 fill-current" /> : <ZapOff className="w-4 h-4" />}
+                </button>
+              )}
+            </div>
+
+            {/* Bottom Controls inside Viewfinder */}
+            <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-2 z-20 pointer-events-auto">
+              <button
+                type="button"
+                onClick={captureFrameFromLiveVideo}
+                className="w-full py-3.5 px-6 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-2xl text-sm font-extrabold flex items-center justify-center gap-2 shadow-xl shadow-red-600/40 active:scale-98 transition-all cursor-pointer"
+              >
+                <Camera className="w-5 h-5" />
+                <span>Capturar e Ler Etiqueta</span>
+              </button>
+
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={openNativeCamera}
-                  className="w-full py-4 px-6 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-2xl text-sm sm:text-base font-black flex items-center justify-center gap-2.5 shadow-xl shadow-red-600/30 active:scale-98 transition-all cursor-pointer"
+                  className="flex-1 py-2 px-3 bg-slate-900/80 hover:bg-slate-800 backdrop-blur-md text-white border border-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Camera className="w-5 h-5" />
-                  <span>Tirar Foto da Etiqueta</span>
+                  <Camera className="w-3.5 h-3.5 text-red-400" />
+                  <span>Foto Câmera Nativa</span>
                 </button>
-
                 <button
                   type="button"
                   onClick={openGallery}
-                  className="w-full py-2.5 px-4 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  className="flex-1 py-2 px-3 bg-slate-900/80 hover:bg-slate-800 backdrop-blur-md text-white border border-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <ImageIcon className="w-4 h-4 text-slate-500" />
-                  <span>Ou escolher foto da Galeria</span>
+                  <ImageIcon className="w-3.5 h-3.5 text-slate-300" />
+                  <span>Galeria</span>
                 </button>
               </div>
             </div>
-          )
+          </div>
+        ) : (
+          /* Standby Fallback (quando acesso à câmera em tempo real aguarda permissão) */
+          <div className="flex flex-col items-center justify-center text-center z-10 gap-4 max-w-md w-full p-6 my-auto text-white">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-3xl bg-red-500/10 border-2 border-red-500/40 flex items-center justify-center text-red-500 shadow-sm">
+                <Camera className="w-10 h-10" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center text-xs font-black shadow-md border-2 border-slate-900">
+                +
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-white tracking-tight">
+                Tirar Foto da Etiqueta
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
+                Tire uma foto nítida e iluminada da etiqueta na traseira do modem para capturar IP, login e senha.
+              </p>
+            </div>
+
+            <div className="flex flex-col w-full gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={openNativeCamera}
+                className="w-full py-3.5 px-6 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-2xl text-sm font-black flex items-center justify-center gap-2 shadow-xl shadow-red-600/30 active:scale-98 transition-all cursor-pointer"
+              >
+                <Camera className="w-5 h-5" />
+                <span>Tirar Foto da Etiqueta</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={startLiveCamera}
+                  className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Video className="w-4 h-4 text-red-400" />
+                  <span>Scanner ao Vivo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openGallery}
+                  className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ImageIcon className="w-4 h-4 text-slate-400" />
+                  <span>Galeria</span>
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
       {/* Error Alert Card if photo scan had an issue */}
       {cameraError && (
-        <div className="bg-red-50/90 border-2 border-red-200 rounded-3xl p-4 flex flex-col gap-3 text-xs text-red-900 shadow-sm">
+        <div className="bg-red-50 border-2 border-red-200 rounded-3xl p-4 flex flex-col gap-3 text-xs text-red-900 shadow-sm">
           <div className="flex items-start gap-2.5">
             <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <span className="font-black text-red-900 text-sm block">Aviso na Leitura da Foto</span>
+              <span className="font-black text-red-900 text-sm block">Aviso na Captura do IP</span>
               <p className="mt-0.5 text-red-700 leading-relaxed font-medium">{cameraError}</p>
             </div>
           </div>
@@ -347,15 +578,15 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
               className="flex-1 py-3 px-3 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98"
             >
               <Camera className="w-4 h-4" />
-              <span>Tirar Outra Foto da Etiqueta</span>
+              <span>Tirar Outra Foto Nítida</span>
             </button>
             <button
               type="button"
-              onClick={openGallery}
+              onClick={startLiveCamera}
               className="py-3 px-3 bg-white hover:bg-red-50 text-red-700 border border-red-300 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs"
             >
-              <ImageIcon className="w-4 h-4" />
-              <span>Galeria</span>
+              <RefreshCw className="w-4 h-4" />
+              <span>Reiniciar Scanner</span>
             </button>
           </div>
         </div>
@@ -387,6 +618,23 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
           )}
         </div>
       )}
+
+      {/* CSS Keyframes for the scanner laser animation */}
+      <style>{`
+        @keyframes scannerLaser {
+          0% {
+            top: 6%;
+            opacity: 0.85;
+          }
+          50% {
+            opacity: 1;
+          }
+          100% {
+            top: 92%;
+            opacity: 0.85;
+          }
+        }
+      `}</style>
     </div>
   );
 };

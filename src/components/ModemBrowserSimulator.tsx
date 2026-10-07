@@ -136,7 +136,6 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   const [isCopiedPass, setIsCopiedPass] = useState<boolean>(false);
   const [isCopiedUser, setIsCopiedUser] = useState<boolean>(false);
   const [isCopiedWifiPass, setIsCopiedWifiPass] = useState<boolean>(false);
-  const [isCopiedIncognito, setIsCopiedIncognito] = useState<boolean>(false);
   const [isCopiedBookmarklet, setIsCopiedBookmarklet] = useState<boolean>(false);
   const [showPass, setShowPass] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'wifi' | 'devices' | 'tools'>('dashboard');
@@ -282,7 +281,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   };
 
   // Open in Real External Native Browser (Chrome/Safari)
-  const openInExternalBrowser = async (forceNoCache: boolean = false) => {
+  const openInExternalBrowser = async () => {
     const rawIp = modem.ip.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
     const target = `http://${rawIp}/`;
 
@@ -291,14 +290,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     setIsCopiedBoth(true);
     setTimeout(() => setIsCopiedBoth(false), 3000);
 
-    if (forceNoCache) {
-      // Para sem cache, também copia o link limpo para colar em Guia Anônima se necessário
-      await copyToClipboardSafe(`http://${rawIp}/`);
-      setIsCopiedIncognito(true);
-      setTimeout(() => setIsCopiedIncognito(false), 3500);
-    }
-
-    // Sempre abre em nova aba limpa
+    // Abre em nova aba
     window.open(target, '_blank');
   };
 
@@ -306,13 +298,6 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     await copyToClipboardSafe(passText);
     setIsCopiedWifiPass(true);
     setTimeout(() => setIsCopiedWifiPass(false), 2500);
-  };
-
-  const copyLinkForIncognito = async () => {
-    const rawIp = modem.ip.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
-    await copyToClipboardSafe(`http://${rawIp}/`);
-    setIsCopiedIncognito(true);
-    setTimeout(() => setIsCopiedIncognito(false), 3000);
   };
 
   // Bulletproof Universal Auto-Fill Script for any router/modem
@@ -518,51 +503,23 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
           </div>
         </div>
 
-        {/* Primary Action Button in VIBRANT RED & Anti-Cache Button */}
-        <div className="pt-1 border-t border-slate-100 flex flex-col gap-2">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              type="button"
-              onClick={() => openInExternalBrowser(false)}
-              className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 transition-all cursor-pointer active:scale-98"
-            >
-              <ExternalLink className="w-4 h-4" />
-              <span>Abrir no Chrome / Safari</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openInExternalBrowser(true)}
-              className="py-2.5 px-3 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
-              title="Carrega sem cache se o Chrome estiver mostrando o modem anterior"
-            >
-              <RotateCw className="w-3.5 h-3.5 text-amber-700" />
-              <span>Abrir sem Cache</span>
-            </button>
-          </div>
-
-          {/* Dica Guia Anônima do Chrome */}
+        {/* Primary Action Buttons in VIBRANT RED */}
+        <div className="pt-1 border-t border-slate-100 flex flex-col gap-2.5">
           <button
             type="button"
-            onClick={copyLinkForIncognito}
-            className="w-full py-2 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-700 font-bold flex items-center justify-between cursor-pointer transition-all"
-            title="Copiar link para colar em uma Guia Anônima do navegador"
+            onClick={openInExternalBrowser}
+            className="w-full py-3.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 transition-all cursor-pointer active:scale-98"
           >
-            <div className="flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5 text-slate-600" />
-              <span>{isCopiedIncognito ? '✓ Link copiado! Cole na Guia Anônima do Chrome' : 'Recomendado ao testar vários modens: Abrir em Guia Anônima'}</span>
-            </div>
-            <span className="text-[10px] text-red-600 font-bold uppercase underline">
-              {isCopiedIncognito ? 'Copiado' : 'Copiar Link'}
-            </span>
+            <ExternalLink className="w-4 h-4" />
+            <span>Abrir no Chrome / Safari</span>
           </button>
 
-          {/* Quick Copy Action Bar - Botão Único: Copiar Login + Senha */}
-          <div className="flex flex-col gap-2">
+          {/* Quick Copy Action Bar - Botão: Copiar Login + Senha */}
+          <div className="flex flex-col gap-1.5">
             <button
               type="button"
               onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
-              className="w-full py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
+              className="w-full py-3 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
             >
               {isCopiedBoth ? (
                 <Check className="w-4 h-4 text-emerald-600" />
@@ -603,55 +560,6 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             <span>Finalizar Acesso e Limpar Dados (Novo Acesso)</span>
           </button>
         )}
-      </div>
-
-      {/* CLARIFICAÇÃO TÉCNICA E GUIA DE PREENCHIMENTO */}
-      <div className="bg-red-50/60 border border-red-200 rounded-3xl p-4 flex flex-col gap-2.5">
-        <div className="flex items-start gap-2.5">
-          <Info className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <h4 className="text-xs sm:text-sm font-bold text-slate-900">
-              Por que o Chrome/Safari não preenche sozinho ao abrir outra aba?
-            </h4>
-            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-              Por motivo de <strong className="text-slate-900">segurança contra invasões de rede (SOP / PNA)</strong>, os navegadores modernos não permitem que nenhuma página web acesse ou digite diretamente dentro de outra aba em <code className="text-red-700 font-mono font-bold bg-white px-1 py-0.5 rounded border border-red-200">{modem.ip}</code>.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
-          <div className="bg-white p-3.5 rounded-2xl border border-red-100 flex flex-col justify-between shadow-2xs">
-            <div>
-              <span className="text-[10px] font-bold uppercase text-red-600 font-mono block">Opção 1 (Recomendada)</span>
-              <p className="text-xs text-slate-800 font-bold mt-0.5">Copiar Login + Senha</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Copia os dados do modem direto para a memória do aparelho com 1 toque.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
-              className="mt-2.5 py-2 px-3 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              <span>{isCopiedBoth ? 'Copiados!' : 'Copiar Login + Senha'}</span>
-            </button>
-          </div>
-
-          <div className="bg-white p-3.5 rounded-2xl border border-red-100 flex flex-col justify-between shadow-2xs">
-            <div>
-              <span className="text-[10px] font-bold uppercase text-red-600 font-mono block">Opção 2 (1-Clique)</span>
-              <p className="text-xs text-slate-800 font-bold mt-0.5">Script / Bookmarklet</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Preenche qualquer roteador colando o comando na barra de endereços do navegador.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => copyText(bookmarkletCode, 'bookmarklet')}
-              className="mt-2.5 py-2 px-3 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-            >
-              <Bookmark className="w-3.5 h-3.5" />
-              <span>{isCopiedBookmarklet ? 'Script Copiado!' : 'Copiar Script'}</span>
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Visual Claro: Janela do Navegador / Simulador Interativo */}

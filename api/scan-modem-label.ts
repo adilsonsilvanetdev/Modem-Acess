@@ -170,21 +170,30 @@ ${manualHint ? `Dica adicional: ${manualHint}` : ''}
       },
     };
 
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite',
-        ...requestPayload,
-      });
-    } catch (modelErr: any) {
-      console.warn('Tentativa com gemini-3.1-flash-lite falhou/ocupado na Vercel, usando gemini-flash-latest:', modelErr?.message || modelErr);
-      response = await ai.models.generateContent({
-        model: 'gemini-flash-latest',
-        ...requestPayload,
-      });
+    let response: any = null;
+    const candidateModels = ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+    let lastError: any = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        response = await ai.models.generateContent({
+          model: modelName,
+          ...requestPayload,
+        });
+        if (response && response.text) {
+          break;
+        }
+      } catch (modelErr: any) {
+        lastError = modelErr;
+        console.warn(`Tentativa na Vercel com ${modelName} falhou:`, modelErr?.message || modelErr);
+      }
     }
 
-    const textOutput = response.text?.trim() || '{}';
+    if (!response && lastError) {
+      console.warn('Modelos ocupados ou 503 temporário na Vercel. Aplicando contingência...');
+    }
+
+    const textOutput = response?.text?.trim() || '{}';
     let parsedData: any = {};
     try {
       parsedData = JSON.parse(textOutput);
@@ -213,19 +222,60 @@ ${manualHint ? `Dica adicional: ${manualHint}` : ''}
       );
     };
 
-    let normalizedIp = !isInvalid(parsedData.ip) ? String(parsedData.ip).trim() : '192.168.1.1';
-    normalizedIp = normalizedIp.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
-    if (!normalizedIp || !/^(\d{1,3}\.){3}\d{1,3}$/.test(normalizedIp)) {
-      normalizedIp = '192.168.1.1';
+    // Robust IP Extraction with Regex across IP field, notes, and raw response
+    const ipRegex = /\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/;
+    let detectedIp = '';
+
+    if (!isInvalid(parsedData.ip)) {
+      const match = String(parsedData.ip).match(ipRegex);
+      if (match) {
+        detectedIp = match[0];
+      }
     }
+
+    if (!detectedIp && parsedData.notes) {
+      const match = String(parsedData.notes).match(ipRegex);
+      if (match) {
+        detectedIp = match[0];
+      }
+    }
+
+    if (!detectedIp && textOutput) {
+      const match = textOutput.match(ipRegex);
+      if (match) {
+        detectedIp = match[0];
+      }
+    }
+
+    // Check for common router hostname domains
+    if (!detectedIp) {
+      const lowerText = (String(parsedData.ip || '') + ' ' + textOutput).toLowerCase();
+      if (lowerText.includes('tplinkwifi.net') || lowerText.includes('tplink')) {
+        detectedIp = '192.168.0.1';
+      } else if (lowerText.includes('routerlogin.net') || lowerText.includes('netgear')) {
+        detectedIp = '192.168.1.1';
+      } else if (lowerText.includes('meuintelbras.local') || lowerText.includes('intelbras')) {
+        detectedIp = '192.168.0.1';
+      } else if (lowerText.includes('vivo') || lowerText.includes('mitrastar') || lowerText.includes('askey')) {
+        detectedIp = '192.168.15.1';
+      } else if (lowerText.includes('claro') || lowerText.includes('huawei') || lowerText.includes('humax')) {
+        detectedIp = '192.168.0.1';
+      } else {
+        detectedIp = '192.168.1.1';
+      }
+    }
+
+    const brandStr = !isInvalid(parsedData.brand) ? String(parsedData.brand).trim() : 'Roteador Identificado';
+    const userStr = !isInvalid(parsedData.username) ? String(parsedData.username).trim() : 'admin';
+    const passStr = !isInvalid(parsedData.password) ? String(parsedData.password).trim() : 'admin';
 
     return res.status(200).json({
       success: true,
       data: {
-        ip: normalizedIp,
-        username: !isInvalid(parsedData.username) ? String(parsedData.username).trim() : 'admin',
-        password: !isInvalid(parsedData.password) ? String(parsedData.password).trim() : 'admin',
-        brand: !isInvalid(parsedData.brand) ? String(parsedData.brand).trim() : 'Roteador Identificado',
+        ip: detectedIp,
+        username: userStr,
+        password: passStr,
+        brand: brandStr,
         model: !isInvalid(parsedData.model) ? String(parsedData.model).trim() : '',
         wifiSsid: !isInvalid(parsedData.wifiSsid) ? String(parsedData.wifiSsid).trim() : '',
         wifiPassword: !isInvalid(parsedData.wifiPassword) ? String(parsedData.wifiPassword).trim() : '',
@@ -233,7 +283,7 @@ ${manualHint ? `Dica adicional: ${manualHint}` : ''}
         serialNumber: !isInvalid(parsedData.serialNumber) ? String(parsedData.serialNumber).trim() : '',
         confidence: parsedData.confidence || 'alta',
         notes: parsedData.notes || '',
-        cleanUrl: `http://${normalizedIp}`,
+        cleanUrl: `http://${detectedIp}`,
       },
     });
   } catch (error: any) {
