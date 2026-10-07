@@ -130,8 +130,8 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   // Browser States
   const [currentUrl, setCurrentUrl] = useState<string>(`http://${modem.ip}/`);
   const [authStep, setAuthStep] = useState<'idle' | 'typing_user' | 'typing_pass' | 'submitting' | 'logged_in'>('idle');
-  const [typedUser, setTypedUser] = useState<string>('');
-  const [typedPass, setTypedPass] = useState<string>('');
+  const [typedUser, setTypedUser] = useState<string>(modem.username || 'admin');
+  const [typedPass, setTypedPass] = useState<string>(modem.password || 'admin');
   const [isCopiedBoth, setIsCopiedBoth] = useState<boolean>(false);
   const [isCopiedPass, setIsCopiedPass] = useState<boolean>(false);
   const [isCopiedUser, setIsCopiedUser] = useState<boolean>(false);
@@ -209,49 +209,14 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     },
   ]);
 
-  // Automated Typing & Login Sequence Effect inside App Simulator
-  const triggerAutoLogin = () => {
-    setAuthStep('typing_user');
-    setTypedUser('');
-    setTypedPass('');
-
-    // Step 1: Type Username
-    let userCharIndex = 0;
-    const targetUser = modem.username;
-    const userInterval = setInterval(() => {
-      if (userCharIndex <= targetUser.length) {
-        setTypedUser(targetUser.slice(0, userCharIndex));
-        userCharIndex++;
-      } else {
-        clearInterval(userInterval);
-        setAuthStep('typing_pass');
-
-        // Step 2: Type Password
-        let passCharIndex = 0;
-        const targetPass = modem.password;
-        const passInterval = setInterval(() => {
-          if (passCharIndex <= targetPass.length) {
-            setTypedPass(targetPass.slice(0, passCharIndex));
-            passCharIndex++;
-          } else {
-            clearInterval(passInterval);
-            setAuthStep('submitting');
-
-            // Step 3: Click Submit / Enter
-            setTimeout(() => {
-              setAuthStep('logged_in');
-              setCurrentUrl(`http://${modem.ip}/main_dashboard.asp`);
-            }, 800);
-          }
-        }, 60);
-      }
-    }, 50);
-  };
-
+  // Preenche automaticamente os campos com Login e Senha
   useEffect(() => {
     setCurrentUrl(`http://${modem.ip}/`);
     setWifiSsid(modem.wifiSsid || (modem.brand ? `${modem.brand} Wi-Fi` : 'Rede Wi-Fi'));
     setWifiPass(modem.wifiPassword || '');
+    setTypedUser(modem.username || 'admin');
+    setTypedPass(modem.password || 'admin');
+    setAuthStep('idle');
     const subnet = modem.ip.split('.').slice(0, 3).join('.');
     setDevices((prev) =>
       prev.map((d, i) => ({
@@ -259,7 +224,6 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
         ip: `${subnet}.${102 + i * 4}`,
       }))
     );
-    triggerAutoLogin();
   }, [modem.id, modem.ip, modem.username, modem.password, modem.wifiSsid, modem.wifiPassword, modem.brand]);
 
   // Copy to clipboard helper with iOS Safari fallback
@@ -436,7 +400,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                 </span>
               </div>
               <h3 className="text-base font-extrabold text-slate-900 mt-0.5">
-                Acessar Página do Modem
+                Acesso Configurações do Modem
               </h3>
               <p className="text-xs text-slate-600">
                 Usuário: <span className="text-red-700 font-mono font-bold">{modem.username}</span> | Senha:{' '}
@@ -447,53 +411,38 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowHelperModal(true)}
-            className="self-end sm:self-center text-xs text-red-600 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg border border-red-200 transition-all"
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-            <span>Como preencher no navegador?</span>
-          </button>
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            <button
+              type="button"
+              onClick={() => setShowPass(!showPass)}
+              className="text-xs text-red-600 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg border border-red-200 transition-all"
+            >
+              {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              <span>{showPass ? 'Ocultar Senha' : 'Ver Senha'}</span>
+            </button>
+          </div>
         </div>
 
-        {/* PASSO 1: VERIFICAÇÃO CRÍTICA DE WI-FI AO TESTAR MÚLTIPLOS MODENS NO MESMO IP */}
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-3.5 flex flex-col gap-2.5 shadow-2xs">
-          <div className="flex items-start gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 flex-shrink-0 mt-0.5">
-              <Wifi className="w-4 h-4" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <span className="font-extrabold text-amber-950 text-xs">
-                  Passo 1: Conectar no Wi-Fi DESTE Modem
-                </span>
-                <span className="text-[9px] font-bold uppercase bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
-                  Obrigatório
-                </span>
+        {/* Informações de Wi-Fi se disponíveis */}
+        {modem.wifiSsid && (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-red-100 text-red-700 flex items-center justify-center flex-shrink-0">
+                <Wifi className="w-3.5 h-3.5" />
               </div>
-              <p className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
-                ⚠️ <strong>Atenção ao testar vários modens:</strong> Se o seu celular continuar conectado no Wi-Fi do modem anterior (ou no 4G), ao abrir <code className="font-mono font-bold bg-white px-1 py-0.2 rounded border border-amber-300">{modem.ip}</code> o navegador <strong>sempre continuará acessando a página do primeiro modem</strong>! Conecte no Wi-Fi deste aparelho e feche a aba antiga no Chrome (ou use Guia Anônima).
-              </p>
-            </div>
-          </div>
-
-          {/* Dados do Wi-Fi deste modem */}
-          <div className="bg-white/95 rounded-xl p-2.5 border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
-            <div className="flex flex-col">
-              <span className="text-[9px] uppercase font-bold text-slate-400 font-mono">Rede Wi-Fi deste modem</span>
-              <span className="font-black text-slate-900 font-mono">{modem.wifiSsid || `${modem.brand} (conforme etiqueta)`}</span>
+              <div className="truncate">
+                <span className="text-[10px] uppercase font-bold text-slate-400 font-mono block">Wi-Fi</span>
+                <span className="font-bold text-slate-900 font-mono truncate">{modem.wifiSsid}</span>
+              </div>
             </div>
             {modem.wifiPassword && (
-              <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                <div className="flex flex-col text-right sm:text-left">
-                  <span className="text-[9px] uppercase font-bold text-slate-400 font-mono">Senha Wi-Fi</span>
-                  <span className="font-bold text-red-700 font-mono">{modem.wifiPassword}</span>
-                </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="font-mono text-slate-600 text-[11px]">Senha: <strong className="text-red-700">{modem.wifiPassword}</strong></span>
                 <button
                   type="button"
                   onClick={() => copyWifiPassword(modem.wifiPassword || '')}
-                  className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-2xs"
+                  className="px-2 py-1 bg-white hover:bg-red-50 text-slate-700 hover:text-red-700 border border-slate-200 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all"
+                  title="Copiar Senha do Wi-Fi"
                 >
                   <Copy className="w-3 h-3" />
                   <span>{isCopiedWifiPass ? 'Copiada!' : 'Copiar'}</span>
@@ -501,7 +450,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
               </div>
             )}
           </div>
-        </div>
+        )}
 
         {/* Primary Action Buttons in VIBRANT RED */}
         <div className="pt-1 border-t border-slate-100 flex flex-col gap-2.5">
@@ -514,51 +463,33 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             <span>Abrir no Chrome / Safari</span>
           </button>
 
-          {/* Quick Copy Action Bar - Botões: Copiar Login + Senha e Preencher Automático */}
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <button
-                type="button"
-                onClick={() => copyText(`${modem.username}\t${modem.password}`, 'both')}
-                className="flex-1 py-3 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
-              >
-                {isCopiedBoth ? (
-                  <Check className="w-4 h-4 text-emerald-600" />
-                ) : (
-                  <Copy className="w-4 h-4 text-red-600" />
-                )}
-                <span>{isCopiedBoth ? 'Login + Senha Copiados!' : 'Copiar Login + Senha'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  copyText(`${modem.username}\t${modem.password}`, 'both');
-                  triggerAutoLogin();
-                }}
-                className="flex-1 py-3 px-4 bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
-              >
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>Preencher Automático</span>
-              </button>
-            </div>
+          {/* Botão Único: Copiar Login + Senha */}
+          <div className="flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                copyText(`${modem.username}\t${modem.password}`, 'both');
+                setTypedUser(modem.username || 'admin');
+                setTypedPass(modem.password || 'admin');
+              }}
+              className="w-full py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
+            >
+              {isCopiedBoth ? (
+                <Check className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <Copy className="w-4 h-4 text-red-600" />
+              )}
+              <span>{isCopiedBoth ? 'Login + Senha Copiados!' : 'Copiar Login + Senha'}</span>
+            </button>
 
             <div className="flex items-center justify-between px-1 text-xs text-slate-500">
               <span className="text-[11px]">
                 {isCopiedBoth ? (
-                  <span className="text-emerald-700 font-bold">✓ Login e Senha prontos (Login no usuário, Senha na senha)!</span>
+                  <span className="text-emerald-700 font-bold">✓ Login e Senha copiados com sucesso!</span>
                 ) : (
-                  <span>Separação correta para colar direto nos campos do roteador</span>
+                  <span>Login no campo usuário e Senha no campo senha</span>
                 )}
               </span>
-              <button
-                type="button"
-                onClick={() => setShowPass(!showPass)}
-                className="text-[11px] text-red-600 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer"
-              >
-                {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                <span>{showPass ? 'Ocultar' : 'Ver Senha'}</span>
-              </button>
             </div>
           </div>
         </div>
@@ -601,11 +532,15 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             </span>
           </div>
 
-          {/* Botão Reiniciar Auto-Preenchimento em VERMELHO */}
+          {/* Botão Atualizar Página do Navegador */}
           <button
             type="button"
-            onClick={triggerAutoLogin}
-            title="Reiniciar Auto-Preenchimento"
+            onClick={() => {
+              setTypedUser(modem.username || 'admin');
+              setTypedPass(modem.password || 'admin');
+              setAuthStep('idle');
+            }}
+            title="Recarregar Página do Modem"
             className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-all cursor-pointer"
           >
             <RotateCw className="w-4 h-4" />
@@ -616,9 +551,9 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
         <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             {authStep !== 'logged_in' ? (
-              <span className="flex items-center gap-1.5 text-red-600 font-bold animate-pulse">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Simulação: Preenchendo credenciais automaticamente...</span>
+              <span className="flex items-center gap-1.5 text-emerald-700 font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Navegador: Campos preenchidos automaticamente</span>
               </span>
             ) : (
               <span className="flex items-center gap-1.5 text-emerald-700 font-bold">
@@ -653,9 +588,9 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                 </div>
 
                 {/* Auto-fill visual indicator */}
-                <div className="mb-4 p-2.5 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2 text-xs text-red-700 font-medium animate-pulse">
-                  <Sparkles className="w-4 h-4 text-red-600 flex-shrink-0" />
-                  <span>Preenchendo automaticamente IP, Usuário e Senha...</span>
+                <div className="mb-4 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-xs text-emerald-800 font-bold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <span>Login e Senha preenchidos automaticamente no navegador</span>
                 </div>
 
                 {/* Login Inputs em Tema Claro */}
@@ -689,17 +624,8 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                           }
                         }}
                         placeholder="admin"
-                        className={`w-full bg-slate-50 border rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 transition-all outline-none ${
-                          authStep === 'typing_user'
-                            ? 'border-red-500 ring-2 ring-red-500/20 bg-white font-bold'
-                            : 'border-slate-300 focus:border-red-500 focus:bg-white'
-                        }`}
+                        className="w-full bg-slate-50 border border-slate-300 focus:border-red-500 focus:bg-white rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 transition-all outline-none"
                       />
-                      {authStep === 'typing_user' && (
-                        <span className="absolute right-3 top-2.5 text-xs text-red-600 font-bold animate-ping">
-                          |
-                        </span>
-                      )}
                     </div>
                   </div>
 
@@ -709,21 +635,12 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                     </label>
                     <div className="relative">
                       <input
-                        type="password"
+                        type={showPass ? 'text' : 'password'}
                         value={typedPass}
                         onChange={(e) => setTypedPass(e.target.value)}
                         placeholder="••••••••"
-                        className={`w-full bg-slate-50 border rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 transition-all outline-none ${
-                          authStep === 'typing_pass'
-                            ? 'border-red-500 ring-2 ring-red-500/20 bg-white font-bold'
-                            : 'border-slate-300 focus:border-red-500 focus:bg-white'
-                        }`}
+                        className="w-full bg-slate-50 border border-slate-300 focus:border-red-500 focus:bg-white rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 transition-all outline-none"
                       />
-                      {authStep === 'typing_pass' && (
-                        <span className="absolute right-3 top-2.5 text-xs text-red-600 font-bold animate-ping">
-                          |
-                        </span>
-                      )}
                     </div>
                   </div>
 
