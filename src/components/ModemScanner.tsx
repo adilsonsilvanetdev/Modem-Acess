@@ -45,7 +45,49 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     }
   };
 
-  // Process image with Gemini API
+  // Compress image to fast lightweight JPEG (<150KB) so upload takes under 200ms
+  const compressImageFile = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+        const rawData = reader.result as string;
+        const img = new Image();
+        img.onerror = () => resolve(rawData);
+        img.onload = () => {
+          try {
+            const maxDim = 1024;
+            let { width, height } = img;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              resolve(canvas.toDataURL('image/jpeg', 0.72));
+              return;
+            }
+            resolve(rawData);
+          } catch {
+            resolve(rawData);
+          }
+        };
+        img.src = rawData;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Process image with Gemini API (fast response with timeout)
   const processImageForModemData = async (base64Data: string) => {
     if (!base64Data || base64Data.length < 50) {
       setIsScanning(false);
@@ -57,6 +99,11 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     setCameraError(null);
     setScanStatusStep('Analisando etiqueta do roteador com IA...');
 
+    const controller = new AbortController();
+    const timeoutTimer = setTimeout(() => {
+      controller.abort();
+    }, 18000);
+
     try {
       setScanStatusStep('Localizando IP, Usuário e Senha na foto...');
 
@@ -64,11 +111,14 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
       const response = await fetch('/api/scan-modem-label', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           image: base64Data,
           mimeType: 'image/jpeg',
         }),
       });
+
+      clearTimeout(timeoutTimer);
 
       const result = await response.json().catch(() => null);
 
@@ -111,10 +161,15 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
 
       throw new Error(result?.error || 'Não foi possível ler as credenciais da etiqueta.');
     } catch (err: any) {
+      clearTimeout(timeoutTimer);
       console.warn('Erro ao processar imagem:', err);
       setIsScanning(false);
-      const rawMsg = err?.message || 'Falha ao processar a foto da etiqueta.';
-      setCameraError(rawMsg);
+      if (err?.name === 'AbortError') {
+        setCameraError('A leitura demorou muito para responder. Por favor, tente tirar uma nova foto mais nítida ou mais próxima da etiqueta.');
+      } else {
+        const rawMsg = err?.message || 'Falha ao processar a foto da etiqueta.';
+        setCameraError(rawMsg);
+      }
     }
   };
 
@@ -129,63 +184,11 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
     try {
       setIsScanning(true);
       setCameraError(null);
-      setScanStatusStep('Carregando foto capturada...');
+      setScanStatusStep('Otimizando foto capturada...');
 
-      const objectUrl = URL.createObjectURL(file);
-      const img = new Image();
-
-      img.onload = async () => {
-        try {
-          const maxDim = 1280;
-          let { width, height } = img;
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            const optimized = canvas.toDataURL('image/jpeg', 0.85);
-            URL.revokeObjectURL(objectUrl);
-            setCapturedImagePreview(optimized);
-            await processImageForModemData(optimized);
-          } else {
-            throw new Error('Falha no processador de imagem.');
-          }
-        } catch {
-          URL.revokeObjectURL(objectUrl);
-          // Fallback via FileReader
-          const reader = new FileReader();
-          reader.onload = () => {
-            const raw = reader.result as string;
-            setCapturedImagePreview(raw);
-            processImageForModemData(raw);
-          };
-          reader.readAsDataURL(file);
-        }
-      };
-
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        const reader = new FileReader();
-        reader.onload = () => {
-          const raw = reader.result as string;
-          setCapturedImagePreview(raw);
-          processImageForModemData(raw);
-        };
-        reader.readAsDataURL(file);
-      };
-
-      img.src = objectUrl;
+      const optimizedBase64 = await compressImageFile(file);
+      setCapturedImagePreview(optimizedBase64);
+      await processImageForModemData(optimizedBase64);
     } catch (err: any) {
       console.warn('Erro ao processar arquivo:', err);
       setIsScanning(false);

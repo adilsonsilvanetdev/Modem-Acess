@@ -116,6 +116,9 @@ ${manualHint ? `Dica adicional: ${manualHint}` : ''}
         },
       ],
       config: {
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
         systemInstruction:
           'Você é um leitor óptico especialista em etiquetas de roteadores. Extraia com precisão absoluta as informações visíveis na foto. Se o usuário ou senha não estiverem expressos, use os padrões mais prováveis da marca.',
         responseMimeType: 'application/json',
@@ -174,13 +177,13 @@ ${manualHint ? `Dica adicional: ${manualHint}` : ''}
     let response;
     try {
       response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-3.1-flash-lite',
         ...requestPayload,
       });
     } catch (modelErr: any) {
-      console.warn('Tentativa com gemini-3.8-flash falhou/ocupado, usando gemini-3.1-flash-lite:', modelErr?.message || modelErr);
+      console.warn('Tentativa com gemini-3.1-flash-lite falhou/ocupado, usando gemini-flash-latest:', modelErr?.message || modelErr);
       response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite',
+        model: 'gemini-flash-latest',
         ...requestPayload,
       });
     }
@@ -198,12 +201,26 @@ ${manualHint ? `Dica adicional: ${manualHint}` : ''}
       }
     }
 
-    const isInvalid = (val: any) => !val || val === 'null' || val === 'undefined' || val === 'None';
+    const isInvalid = (val: any) => {
+      if (!val) return true;
+      const str = String(val).trim().toLowerCase();
+      return (
+        str === '' ||
+        str === 'null' ||
+        str === 'undefined' ||
+        str === 'none' ||
+        str === 'n/a' ||
+        str === 'na' ||
+        str === '-' ||
+        str === 'não informado' ||
+        str === 'desconhecido'
+      );
+    };
 
     // Sanitize and normalize IP
     let normalizedIp = !isInvalid(parsedData.ip) ? String(parsedData.ip).trim() : '192.168.1.1';
     normalizedIp = normalizedIp.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
-    if (!normalizedIp || normalizedIp === 'null') {
+    if (!normalizedIp || !/^(\d{1,3}\.){3}\d{1,3}$/.test(normalizedIp)) {
       normalizedIp = '192.168.1.1';
     }
 

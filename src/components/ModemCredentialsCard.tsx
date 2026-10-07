@@ -291,35 +291,20 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
         )}
       </div>
 
-      {/* Action Buttons: Separado Usuário e Senha para não colar tudo junto no login */}
+      {/* Botão Único: Copiar Login + Senha */}
       <div className="pt-2 flex flex-col gap-2">
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => copyToClipboard(modem.username, 'user')}
-            className="py-3 px-3 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98"
-          >
-            {copiedField === 'user' ? (
-              <Check className="w-4 h-4 text-emerald-600" />
-            ) : (
-              <Copy className="w-4 h-4 text-red-600" />
-            )}
-            <span>{copiedField === 'user' ? 'Usuário Copiado!' : '1º Copiar Usuário'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => copyToClipboard(modem.password, 'pass')}
-            className="py-3 px-3 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98"
-          >
-            {copiedField === 'pass' ? (
-              <Check className="w-4 h-4 text-emerald-600" />
-            ) : (
-              <Key className="w-4 h-4 text-red-600" />
-            )}
-            <span>{copiedField === 'pass' ? 'Senha Copiada!' : '2º Copiar Senha'}</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => copyToClipboard(`${modem.username}\n${modem.password}`, 'both')}
+          className="w-full py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs active:scale-98"
+        >
+          {copiedField === 'both' ? (
+            <Check className="w-4 h-4 text-emerald-600" />
+          ) : (
+            <Copy className="w-4 h-4 text-red-600" />
+          )}
+          <span>{copiedField === 'both' ? 'Login + Senha Copiados!' : 'Copiar Login + Senha'}</span>
+        </button>
 
         <button
           type="button"
