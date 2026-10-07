@@ -83,8 +83,10 @@ REGRAS CRÍTICAS:
    - Se o IP não estiver explicitamente escrito, use o IP padrão de fábrica da MARCA identificada na foto.
 4. Usuário de Login Web:
    - Procure por: "Username", "Usuário", "User", "Admin User", "Login". Geralmente "admin", "telecomadmin", "user", "root".
+   - Retorne apenas o nome do usuário, sem prefixos como "user:".
 5. Senha de Acesso Web (Gerenciamento):
    - Procure por: "Password", "Senha", "Senha de Acesso", "Admin Password", "Web Password".
+   - ATENÇÃO: NUNCA coloque pontos finais (.), vírgulas ou pontuações na senha. Retorne a senha EXATA, SEM PONTOS e sem alterações.
    - Se na etiqueta a senha de gerenciamento for a mesma do Wi-Fi ou estiver rotulada apenas como "Senha" ou "Password", extraia esse valor.
 6. Nome da Rede Wi-Fi (SSID):
    - Se estiver impresso na etiqueta (ex: "SSID", "Rede Wi-Fi", "WLAN"), extraia O NOME EXATO.
@@ -270,8 +272,18 @@ ${manualHint ? `Dica adicional: ${manualHint}` : ''}
     }
 
     const brandStr = !isInvalid(parsedData.brand) ? String(parsedData.brand).trim() : 'Roteador Identificado';
-    const userStr = !isInvalid(parsedData.username) ? String(parsedData.username).trim() : 'admin';
-    const passStr = !isInvalid(parsedData.password) ? String(parsedData.password).trim() : 'admin';
+    let userStr = !isInvalid(parsedData.username) ? String(parsedData.username).trim() : 'admin';
+    userStr = userStr.replace(/^["'`([{<]+|["'`)\]}>]+$/g, '');
+    userStr = userStr.replace(/^(?:usuario|usuário|user|login|username)\s*[:=-]?\s*/i, '');
+    userStr = userStr.replace(/^[.,:;!?_~^`-]+|[.,:;!?_~^`-]+$/g, '').trim() || 'admin';
+
+    let passStr = !isInvalid(parsedData.password) ? String(parsedData.password).trim() : 'admin';
+    passStr = passStr.replace(/^["'`([{<]+|["'`)\]}>]+$/g, '');
+    passStr = passStr.replace(/^(?:senha|password|pass|pwd|chave|key)\s*[:=-]?\s*/i, '');
+    // Remove all dots/periods and bullet points completely ("sem pontos na senha")
+    passStr = passStr.replace(/[•.·…]+/g, '');
+    // Remove trailing and leading punctuation
+    passStr = passStr.replace(/^[.,:;!?_~^`-]+|[.,:;!?_~^`-]+$/g, '').trim() || 'admin';
 
     return res.json({
       success: true,

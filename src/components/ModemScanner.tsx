@@ -13,6 +13,7 @@ import {
   Sun,
 } from 'lucide-react';
 import { ScannedModem } from '../types';
+import { cleanModemPassword, cleanModemUser } from '../utils/credentials';
 
 interface ModemScannerProps {
   onScanSuccess: (modem: ScannedModem) => void;
@@ -315,8 +316,8 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         const scannedModem: ScannedModem = {
           id: 'modem-' + Date.now(),
           ip: parsed.ip || '192.168.1.1',
-          username: parsed.username || 'admin',
-          password: parsed.password || 'admin',
+          username: cleanModemUser(parsed.username),
+          password: cleanModemPassword(parsed.password),
           brand: brandName,
           model: modelName,
           wifiSsid: parsed.wifiSsid || (brandName ? `${brandName} Wi-Fi` : undefined),

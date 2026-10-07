@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { ScannedModem } from '../types';
 import { copyToClipboardSafe } from '../utils/clipboard';
+import { cleanModemPassword, cleanModemUser } from '../utils/credentials';
 
 interface ModemCredentialsCardProps {
   modem: ScannedModem;
@@ -40,12 +41,15 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
 
   // Form states
   const [ip, setIp] = useState<string>(modem.ip);
-  const [username, setUsername] = useState<string>(modem.username);
-  const [password, setPassword] = useState<string>(modem.password);
+  const [username, setUsername] = useState<string>(cleanModemUser(modem.username));
+  const [password, setPassword] = useState<string>(cleanModemPassword(modem.password));
   const [brand, setBrand] = useState<string>(modem.brand);
   const [model, setModel] = useState<string>(modem.model);
   const [wifiSsid, setWifiSsid] = useState<string>(modem.wifiSsid || '');
   const [wifiPassword, setWifiPassword] = useState<string>(modem.wifiPassword || '');
+
+  const cleanUser = cleanModemUser(modem.username);
+  const cleanPass = cleanModemPassword(modem.password);
 
   const copyToClipboard = async (text: string, fieldName: string) => {
     await copyToClipboardSafe(text);
@@ -57,8 +61,8 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
     const updated: ScannedModem = {
       ...modem,
       ip: ip.trim(),
-      username: username.trim(),
-      password: password.trim(),
+      username: cleanModemUser(username),
+      password: cleanModemPassword(password),
       brand: brand.trim(),
       model: model.trim(),
       wifiSsid: wifiSsid.trim() || undefined,
@@ -176,7 +180,7 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
                 />
               ) : (
                 <span className="text-sm font-mono font-bold text-slate-900">
-                  {modem.username}
+                  {cleanUser}
                 </span>
               )}
             </div>
@@ -184,7 +188,7 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
           {!isEditing && (
             <button
               type="button"
-              onClick={() => copyToClipboard(modem.username, 'user')}
+              onClick={() => copyToClipboard(cleanUser, 'user')}
               className="p-2 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 rounded-xl transition-all cursor-pointer shadow-2xs"
               title="Copiar Usuário"
             >
@@ -207,12 +211,12 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
                 <input
                   type="text"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(cleanModemPassword(e.target.value))}
                   className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-sm font-mono text-slate-900 w-full mt-1 focus:border-red-500 outline-none"
                 />
               ) : (
                 <span className="text-sm font-mono font-bold text-slate-900">
-                  {showPassword ? modem.password : '••••••••••••'}
+                  {showPassword ? cleanPass : '••••••••••••'}
                 </span>
               )}
             </div>
@@ -229,7 +233,7 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => copyToClipboard(modem.password, 'pass')}
+                onClick={() => copyToClipboard(cleanPass, 'pass')}
                 className="p-2 bg-white hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 rounded-xl transition-all cursor-pointer shadow-2xs"
                 title="Copiar Senha"
               >
@@ -295,7 +299,7 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
       <div className="pt-2 flex flex-col gap-2">
         <button
           type="button"
-          onClick={() => copyToClipboard(`${modem.username}\t${modem.password}`, 'both')}
+          onClick={() => copyToClipboard(`${cleanUser}\t${cleanPass}`, 'both')}
           className="w-full py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs active:scale-98"
         >
           {copiedField === 'both' ? (
