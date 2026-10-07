@@ -285,8 +285,8 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     const rawIp = modem.ip.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
     const target = `http://${rawIp}/`;
 
-    // Auto copy Login + Senha
-    await copyToClipboardSafe(`${modem.username}\n${modem.password}`);
+    // Auto copy Login + Senha with Tab separator (\t) so browser puts username in login field and password in password field
+    await copyToClipboardSafe(`${modem.username}\t${modem.password}`);
     setIsCopiedBoth(true);
     setTimeout(() => setIsCopiedBoth(false), 3000);
 
@@ -514,27 +514,41 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             <span>Abrir no Chrome / Safari</span>
           </button>
 
-          {/* Quick Copy Action Bar - Botão: Copiar Login + Senha */}
-          <div className="flex flex-col gap-1.5">
-            <button
-              type="button"
-              onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
-              className="w-full py-3 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
-            >
-              {isCopiedBoth ? (
-                <Check className="w-4 h-4 text-emerald-600" />
-              ) : (
-                <Copy className="w-4 h-4 text-red-600" />
-              )}
-              <span>{isCopiedBoth ? 'Login + Senha Copiados!' : 'Copiar Login + Senha'}</span>
-            </button>
+          {/* Quick Copy Action Bar - Botões: Copiar Login + Senha e Preencher Automático */}
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => copyText(`${modem.username}\t${modem.password}`, 'both')}
+                className="flex-1 py-3 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
+              >
+                {isCopiedBoth ? (
+                  <Check className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <Copy className="w-4 h-4 text-red-600" />
+                )}
+                <span>{isCopiedBoth ? 'Login + Senha Copiados!' : 'Copiar Login + Senha'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  copyText(`${modem.username}\t${modem.password}`, 'both');
+                  triggerAutoLogin();
+                }}
+                className="flex-1 py-3 px-4 bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
+              >
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>Preencher Automático</span>
+              </button>
+            </div>
 
             <div className="flex items-center justify-between px-1 text-xs text-slate-500">
               <span className="text-[11px]">
                 {isCopiedBoth ? (
-                  <span className="text-emerald-700 font-bold">✓ Login e Senha na memória do aparelho!</span>
+                  <span className="text-emerald-700 font-bold">✓ Login e Senha prontos (Login no usuário, Senha na senha)!</span>
                 ) : (
-                  <span>Pronto para colar ou usar na página do roteador</span>
+                  <span>Separação correta para colar direto nos campos do roteador</span>
                 )}
               </span>
               <button
@@ -653,13 +667,32 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                     <div className="relative">
                       <input
                         type="text"
-                        readOnly
                         value={typedUser}
+                        onChange={(e) => setTypedUser(e.target.value)}
+                        onPaste={(e) => {
+                          const pasted = e.clipboardData.getData('text');
+                          if (pasted) {
+                            e.preventDefault();
+                            let u = pasted;
+                            let p = '';
+                            if (pasted.includes('\t')) {
+                              const parts = pasted.split('\t');
+                              u = parts[0]?.trim() || '';
+                              p = parts.slice(1).join('\t').trim();
+                            } else if (pasted.includes('\n')) {
+                              const parts = pasted.split('\n');
+                              u = parts[0]?.trim() || '';
+                              p = parts.slice(1).join('\n').trim();
+                            }
+                            setTypedUser(u || modem.username);
+                            if (p) setTypedPass(p);
+                          }
+                        }}
                         placeholder="admin"
                         className={`w-full bg-slate-50 border rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 transition-all outline-none ${
                           authStep === 'typing_user'
                             ? 'border-red-500 ring-2 ring-red-500/20 bg-white font-bold'
-                            : 'border-slate-300'
+                            : 'border-slate-300 focus:border-red-500 focus:bg-white'
                         }`}
                       />
                       {authStep === 'typing_user' && (
@@ -677,13 +710,13 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                     <div className="relative">
                       <input
                         type="password"
-                        readOnly
                         value={typedPass}
+                        onChange={(e) => setTypedPass(e.target.value)}
                         placeholder="••••••••"
                         className={`w-full bg-slate-50 border rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 transition-all outline-none ${
                           authStep === 'typing_pass'
                             ? 'border-red-500 ring-2 ring-red-500/20 bg-white font-bold'
-                            : 'border-slate-300'
+                            : 'border-slate-300 focus:border-red-500 focus:bg-white'
                         }`}
                       />
                       {authStep === 'typing_pass' && (
@@ -697,11 +730,17 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                   {/* Submit Button em VERMELHO */}
                   <button
                     type="button"
-                    disabled
+                    onClick={() => {
+                      setAuthStep('submitting');
+                      setTimeout(() => {
+                        setAuthStep('logged_in');
+                        setCurrentUrl(`http://${modem.ip}/main_dashboard.asp`);
+                      }, 500);
+                    }}
                     className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       authStep === 'submitting'
                         ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 scale-[0.98]'
-                        : 'bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-600/25'
+                        : 'bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-600/25 active:scale-98'
                     }`}
                   >
                     {authStep === 'submitting' ? (
@@ -1082,7 +1121,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                     </span>
                     <button
                       type="button"
-                      onClick={() => copyText(`${modem.username}\n${modem.password}`, 'both')}
+                      onClick={() => copyText(`${modem.username}\t${modem.password}`, 'both')}
                       className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-xs"
                     >
                       {isCopiedBoth ? 'Copiados!' : 'Copiar Login + Senha'}

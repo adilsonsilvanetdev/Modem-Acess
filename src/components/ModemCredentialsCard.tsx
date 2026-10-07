@@ -295,7 +295,7 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
       <div className="pt-2 flex flex-col gap-2">
         <button
           type="button"
-          onClick={() => copyToClipboard(`${modem.username}\n${modem.password}`, 'both')}
+          onClick={() => copyToClipboard(`${modem.username}\t${modem.password}`, 'both')}
           className="w-full py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 font-extrabold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs active:scale-98"
         >
           {copiedField === 'both' ? (
