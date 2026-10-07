@@ -10,6 +10,7 @@ import {
   Zap,
   ZapOff,
   Video,
+  Sun,
 } from 'lucide-react';
 import { ScannedModem } from '../types';
 
@@ -31,21 +32,40 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
   const nativeCameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [isLiveCameraActive, setIsLiveCameraActive] = useState<boolean>(false);
   const [liveCameraLoading, setLiveCameraLoading] = useState<boolean>(true);
   const [torchEnabled, setTorchEnabled] = useState<boolean>(false);
   const [hasTorchSupport, setHasTorchSupport] = useState<boolean>(false);
+  const [brightnessBoost, setBrightnessBoost] = useState<boolean>(false);
 
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanStatusStep, setScanStatusStep] = useState<string>('');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [capturedImagePreview, setCapturedImagePreview] = useState<string | null>(null);
 
+  // Callback ref guarantees srcObject is attached the exact millisecond the <video> node mounts in the DOM
+  const videoRefCallback = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    setVideoElement(node);
+    if (node && streamRef.current) {
+      node.srcObject = streamRef.current;
+      node.muted = true;
+      node.playsInline = true;
+      node.play().catch((err) => {
+        console.warn('Video auto-play aguardando interação:', err);
+      });
+    }
+  }, []);
+
   // Stop live camera stream safely
   const stopLiveCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setIsLiveCameraActive(false);
     setTorchEnabled(false);
@@ -62,22 +82,32 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
         throw new Error('Acesso direto à câmera em tempo real não suportado neste navegador. Use o botão Tirar Foto.');
       }
 
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920, min: 1280 },
-          height: { ideal: 1080, min: 720 },
-        },
-        audio: false,
-      };
+      // Flexible constraints to avoid OverconstrainedError and dark feeds
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+      } catch (firstErr) {
+        console.warn('Tentando configuração secundária de câmera:', firstErr);
+        // Fallback for devices/laptops with simpler webcams
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
-      }
+      // Ensure tracks are enabled and active
+      stream.getVideoTracks().forEach((track) => {
+        track.enabled = true;
+      });
 
       // Check flashlight/torch support
       const videoTrack = stream.getVideoTracks()[0];
@@ -90,12 +120,34 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
 
       setIsLiveCameraActive(true);
       setLiveCameraLoading(false);
+
+      // Connect to video element if already mounted
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.muted = true;
+        videoRef.current.playsInline = true;
+        await videoRef.current.play().catch((e) => {
+          console.warn('Play error:', e);
+        });
+      }
     } catch (err: any) {
       console.warn('Câmera automática ao vivo não pôde iniciar:', err?.message || err);
       setIsLiveCameraActive(false);
       setLiveCameraLoading(false);
     }
   }, [stopLiveCamera]);
+
+  // Ensure stream stays bound whenever videoElement or isLiveCameraActive changes
+  useEffect(() => {
+    if (videoElement && streamRef.current) {
+      if (videoElement.srcObject !== streamRef.current) {
+        videoElement.srcObject = streamRef.current;
+      }
+      videoElement.muted = true;
+      videoElement.playsInline = true;
+      videoElement.play().catch(() => {});
+    }
+  }, [videoElement, isLiveCameraActive]);
 
   // Start automatic scanner when opening the app
   useEffect(() => {
@@ -141,6 +193,9 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Não foi possível inicializar o canvas de captura');
 
+      if (brightnessBoost) {
+        ctx.filter = 'brightness(1.25) contrast(1.15)';
+      }
       ctx.drawImage(video, 0, 0, width, height);
       // High quality JPEG so numbers on router labels remain crisp
       const highResDataUrl = canvas.toDataURL('image/jpeg', 0.92);
@@ -414,16 +469,24 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
           /* 1. Live Camera Scanner Mode (Ativo Automaticamente ao Abrir) */
           <div className="relative w-full h-full overflow-hidden flex items-center justify-center bg-black">
             <video
-              ref={videoRef}
+              ref={videoRefCallback}
               playsInline
               autoPlay
               muted
-              className="w-full h-full object-cover"
+              onLoadedMetadata={() => {
+                if (videoRef.current) {
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
+              style={{
+                filter: brightnessBoost ? 'brightness(1.4) contrast(1.15) saturate(1.1)' : 'none',
+              }}
+              className="w-full h-full object-cover transition-all"
             />
 
-            {/* Viewfinder Target Reticle / Scanning Frame */}
+            {/* Viewfinder Target Reticle / Scanning Frame - Clean and Bright */}
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-6">
-              <div className="relative w-full max-w-[320px] aspect-[4/3] rounded-2xl border-2 border-red-500/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]">
+              <div className="relative w-full max-w-[320px] aspect-[4/3] rounded-2xl border-2 border-red-500 shadow-[0_0_0_9999px_rgba(0,0,0,0.15)]">
                 {/* Corner Marks */}
                 <div className="absolute -top-1.5 -left-1.5 w-6 h-6 border-t-4 border-l-4 border-red-500 rounded-tl-lg" />
                 <div className="absolute -top-1.5 -right-1.5 w-6 h-6 border-t-4 border-r-4 border-red-500 rounded-tr-lg" />
@@ -440,40 +503,58 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
 
                 {/* Center crosshair */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-8 h-8 rounded-full border border-red-500/30 flex items-center justify-center">
-                    <div className="w-2 h-2 rounded-full bg-red-500/60" />
+                  <div className="w-8 h-8 rounded-full border border-red-500/40 flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-red-500" />
                   </div>
                 </div>
 
                 <div className="absolute -bottom-7 left-0 right-0 text-center">
-                  <span className="text-[11px] font-bold text-white bg-slate-900/80 px-2.5 py-1 rounded-full border border-red-500/40">
+                  <span className="text-[11px] font-bold text-white bg-slate-900/90 px-3 py-1 rounded-full border border-red-500/50 shadow-md">
                     Posicione o IP e a Senha no quadro
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Top Bar Controls (Flashlight, Camera Status) */}
+            {/* Top Bar Controls (Flashlight, Clarear +Luz, Status) */}
             <div className="absolute top-3 left-3 right-3 flex items-center justify-between z-10 pointer-events-auto">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/70 backdrop-blur-md border border-slate-700/80 text-[11px] text-white font-medium">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-slate-700/80 text-[11px] text-white font-medium">
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
                 <span>Scanner Ativo</span>
               </div>
 
-              {hasTorchSupport && (
+              <div className="flex items-center gap-2">
+                {/* Botão Clarear / Aumentar Luz */}
                 <button
                   type="button"
-                  onClick={toggleTorch}
-                  className={`p-2 rounded-full border backdrop-blur-md transition-all cursor-pointer ${
-                    torchEnabled
-                      ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md'
-                      : 'bg-slate-900/70 text-white border-slate-700/80'
+                  onClick={() => setBrightnessBoost(!brightnessBoost)}
+                  className={`px-3 py-1.5 rounded-full border backdrop-blur-md transition-all cursor-pointer text-xs font-bold flex items-center gap-1.5 ${
+                    brightnessBoost
+                      ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-lg ring-2 ring-amber-300/60'
+                      : 'bg-slate-900/80 text-white border-slate-700/80 hover:bg-slate-800'
                   }`}
-                  title="Lanterna / Flash"
+                  title="Clarear imagem / Modo iluminação alta"
                 >
-                  {torchEnabled ? <Zap className="w-4 h-4 fill-current" /> : <ZapOff className="w-4 h-4" />}
+                  <Sun className={`w-3.5 h-3.5 ${brightnessBoost ? 'text-slate-950 animate-spin' : 'text-amber-400'}`} style={brightnessBoost ? { animationDuration: '8s' } : undefined} />
+                  <span>{brightnessBoost ? '+Luz Ligada' : 'Clarear (+Luz)'}</span>
                 </button>
-              )}
+
+                {/* Lanterna / Flash se suportado pelo hardware */}
+                {hasTorchSupport && (
+                  <button
+                    type="button"
+                    onClick={toggleTorch}
+                    className={`p-2 rounded-full border backdrop-blur-md transition-all cursor-pointer ${
+                      torchEnabled
+                        ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md'
+                        : 'bg-slate-900/80 text-white border-slate-700/80 hover:bg-slate-800'
+                    }`}
+                    title="Lanterna / Flash"
+                  >
+                    {torchEnabled ? <Zap className="w-4 h-4 fill-current text-slate-950" /> : <ZapOff className="w-4 h-4 text-slate-300" />}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Bottom Controls inside Viewfinder */}
