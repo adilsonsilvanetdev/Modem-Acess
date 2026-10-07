@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Globe,
   Lock,
@@ -209,14 +209,110 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     },
   ]);
 
-  // Preenche automaticamente os campos com Login e Senha
+  const typingTimerRef = useRef<NodeJS.Timeout[]>([]);
+
+  const clearTypingTimers = useCallback(() => {
+    typingTimerRef.current.forEach((t) => clearTimeout(t));
+    typingTimerRef.current = [];
+  }, []);
+
+  // Preenche inteligente dividindo usuário e senha nos campos corretos
+  const handleSmartPaste = useCallback((pasted: string) => {
+    if (!pasted) return;
+    clearTypingTimers();
+
+    let u = '';
+    let p = '';
+
+    if (pasted.includes('\t')) {
+      const parts = pasted.split('\t');
+      u = parts[0]?.trim() || '';
+      p = parts.slice(1).join('\t').trim();
+    } else if (pasted.includes('\n')) {
+      const parts = pasted.split('\n');
+      u = parts[0]?.trim() || '';
+      p = parts.slice(1).join('\n').trim();
+    } else if (pasted.includes(':') && !pasted.startsWith('http')) {
+      const parts = pasted.split(':');
+      u = parts[0]?.trim() || '';
+      p = parts.slice(1).join(':').trim();
+    } else if (modem.username && pasted.startsWith(modem.username) && pasted.length > modem.username.length) {
+      u = modem.username;
+      p = pasted.slice(modem.username.length).trim();
+    } else if (pasted.includes(' ') && !pasted.includes('\t')) {
+      const parts = pasted.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        u = parts[0];
+        p = parts.slice(1).join(' ');
+      } else {
+        u = pasted.trim();
+      }
+    } else {
+      u = pasted.trim();
+    }
+
+    if (u) setTypedUser(u);
+    if (p) {
+      setTypedPass(p);
+    } else if (!typedPass) {
+      setTypedPass(modem.password || 'admin');
+    }
+    setAuthStep('idle');
+  }, [clearTypingTimers, modem.username, modem.password, typedPass]);
+
+  // Função que executa o preenchimento automático de cada campo no navegador
+  const triggerAutoLogin = useCallback((customUser?: string, customPass?: string) => {
+    clearTypingTimers();
+
+    const targetUser = customUser !== undefined ? customUser : (modem.username || 'admin');
+    const targetPass = customPass !== undefined ? customPass : (modem.password || 'admin');
+
+    setTypedUser('');
+    setTypedPass('');
+    setAuthStep('typing_user');
+
+    // Preenche campo Usuário
+    const uLen = targetUser.length;
+    const userSpeed = Math.max(20, Math.min(50, Math.floor(350 / (uLen || 1))));
+
+    for (let i = 1; i <= uLen; i++) {
+      const timer = setTimeout(() => {
+        setTypedUser(targetUser.slice(0, i));
+      }, i * userSpeed);
+      typingTimerRef.current.push(timer);
+    }
+
+    // Após terminar o Usuário, preenche a Senha no seu campo correto
+    const userDoneTime = (uLen + 1) * userSpeed + 120;
+    const passStartTimer = setTimeout(() => {
+      setAuthStep('typing_pass');
+      const pLen = targetPass.length;
+      const passSpeed = Math.max(20, Math.min(50, Math.floor(350 / (pLen || 1))));
+
+      for (let j = 1; j <= pLen; j++) {
+        const timer = setTimeout(() => {
+          setTypedPass(targetPass.slice(0, j));
+        }, j * passSpeed);
+        typingTimerRef.current.push(timer);
+      }
+
+      const passDoneTime = (pLen + 1) * passSpeed + 80;
+      const finishTimer = setTimeout(() => {
+        setTypedUser(targetUser);
+        setTypedPass(targetPass);
+        setAuthStep('idle');
+      }, passDoneTime);
+      typingTimerRef.current.push(finishTimer);
+    }, userDoneTime);
+
+    typingTimerRef.current.push(passStartTimer);
+  }, [clearTypingTimers, modem.username, modem.password]);
+
+  // Preenche automaticamente os campos com Login e Senha ao carregar
   useEffect(() => {
     setCurrentUrl(`http://${modem.ip}/`);
     setWifiSsid(modem.wifiSsid || (modem.brand ? `${modem.brand} Wi-Fi` : 'Rede Wi-Fi'));
     setWifiPass(modem.wifiPassword || '');
-    setTypedUser(modem.username || 'admin');
-    setTypedPass(modem.password || 'admin');
-    setAuthStep('idle');
     const subnet = modem.ip.split('.').slice(0, 3).join('.');
     setDevices((prev) =>
       prev.map((d, i) => ({
@@ -224,7 +320,35 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
         ip: `${subnet}.${102 + i * 4}`,
       }))
     );
-  }, [modem.id, modem.ip, modem.username, modem.password, modem.wifiSsid, modem.wifiPassword, modem.brand]);
+
+    // Dispara o preenchimento automático no navegador ao acessar a página
+    const timer = setTimeout(() => {
+      triggerAutoLogin();
+    }, 120);
+
+    return () => {
+      clearTimeout(timer);
+      clearTypingTimers();
+    };
+  }, [modem.id, modem.ip, modem.username, modem.password, modem.wifiSsid, modem.wifiPassword, modem.brand, triggerAutoLogin, clearTypingTimers]);
+
+  // Se o usuário alternar para o app tendo copiado credenciais, garante o preenchimento
+  useEffect(() => {
+    const handleFocus = async () => {
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+          const text = await navigator.clipboard.readText();
+          if (text && (text.includes(modem.username) || text.includes(modem.password))) {
+            handleSmartPaste(text);
+          }
+        }
+      } catch (_) {
+        // permissão opcional, segue normalmente
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [modem.username, modem.password, handleSmartPaste]);
 
   // Copy to clipboard helper with iOS Safari fallback
   const copyText = async (text: string, type: 'pass' | 'user' | 'both' | 'bookmarklet') => {
@@ -238,6 +362,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     } else if (type === 'both') {
       setIsCopiedBoth(true);
       setTimeout(() => setIsCopiedBoth(false), 2500);
+      triggerAutoLogin(modem.username, modem.password);
     } else {
       setIsCopiedBookmarklet(true);
       setTimeout(() => setIsCopiedBookmarklet(false), 2500);
@@ -467,10 +592,8 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
           <div className="flex flex-col gap-1.5">
             <button
               type="button"
-              onClick={() => {
-                copyText(`${modem.username}\t${modem.password}`, 'both');
-                setTypedUser(modem.username || 'admin');
-                setTypedPass(modem.password || 'admin');
+              onClick={async () => {
+                await copyText(`${modem.username}\t${modem.password}`, 'both');
               }}
               className="w-full py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
             >
@@ -485,7 +608,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             <div className="flex items-center justify-between px-1 text-xs text-slate-500">
               <span className="text-[11px]">
                 {isCopiedBoth ? (
-                  <span className="text-emerald-700 font-bold">✓ Login e Senha copiados com sucesso!</span>
+                  <span className="text-emerald-700 font-bold">✓ Login e Senha copiados e preenchidos no navegador!</span>
                 ) : (
                   <span>Login no campo usuário e Senha no campo senha</span>
                 )}
@@ -535,12 +658,8 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
           {/* Botão Atualizar Página do Navegador */}
           <button
             type="button"
-            onClick={() => {
-              setTypedUser(modem.username || 'admin');
-              setTypedPass(modem.password || 'admin');
-              setAuthStep('idle');
-            }}
-            title="Recarregar Página do Modem"
+            onClick={() => triggerAutoLogin()}
+            title="Recarregar e Preencher Automaticamente"
             className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-all cursor-pointer"
           >
             <RotateCw className="w-4 h-4" />
@@ -553,7 +672,13 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             {authStep !== 'logged_in' ? (
               <span className="flex items-center gap-1.5 text-emerald-700 font-bold">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Navegador: Campos preenchidos automaticamente</span>
+                <span>
+                  {authStep === 'typing_user'
+                    ? 'Navegador: Preenchendo usuário...'
+                    : authStep === 'typing_pass'
+                    ? 'Navegador: Preenchendo senha...'
+                    : 'Navegador: Campos preenchidos automaticamente'}
+                </span>
               </span>
             ) : (
               <span className="flex items-center gap-1.5 text-emerald-700 font-bold">
@@ -588,9 +713,27 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                 </div>
 
                 {/* Auto-fill visual indicator */}
-                <div className="mb-4 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-xs text-emerald-800 font-bold">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                  <span>Login e Senha preenchidos automaticamente no navegador</span>
+                <div className={`mb-4 p-2.5 rounded-xl border flex items-center gap-2 text-xs font-bold transition-all ${
+                  authStep === 'typing_user' || authStep === 'typing_pass'
+                    ? 'bg-red-50 border-red-200 text-red-700 animate-pulse'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                }`}>
+                  {authStep === 'typing_user' ? (
+                    <>
+                      <RotateCw className="w-4 h-4 text-red-600 animate-spin" />
+                      <span>Preenchendo Nome de Usuário automaticamente...</span>
+                    </>
+                  ) : authStep === 'typing_pass' ? (
+                    <>
+                      <RotateCw className="w-4 h-4 text-red-600 animate-spin" />
+                      <span>Preenchendo Senha no campo correspondente...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <span>Login e Senha preenchidos automaticamente no navegador</span>
+                    </>
+                  )}
                 </div>
 
                 {/* Login Inputs em Tema Claro */}
@@ -608,24 +751,28 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                           const pasted = e.clipboardData.getData('text');
                           if (pasted) {
                             e.preventDefault();
-                            let u = pasted;
-                            let p = '';
-                            if (pasted.includes('\t')) {
-                              const parts = pasted.split('\t');
-                              u = parts[0]?.trim() || '';
-                              p = parts.slice(1).join('\t').trim();
-                            } else if (pasted.includes('\n')) {
-                              const parts = pasted.split('\n');
-                              u = parts[0]?.trim() || '';
-                              p = parts.slice(1).join('\n').trim();
-                            }
-                            setTypedUser(u || modem.username);
-                            if (p) setTypedPass(p);
+                            handleSmartPaste(pasted);
                           }
                         }}
                         placeholder="admin"
-                        className="w-full bg-slate-50 border border-slate-300 focus:border-red-500 focus:bg-white rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 transition-all outline-none"
+                        className={`w-full bg-slate-50 border rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 transition-all outline-none ${
+                          authStep === 'typing_user'
+                            ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/30'
+                            : typedUser
+                            ? 'border-emerald-300 focus:border-red-500 focus:bg-white'
+                            : 'border-slate-300 focus:border-red-500 focus:bg-white'
+                        }`}
                       />
+                      {authStep === 'typing_user' && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-md animate-pulse">
+                          Preenchendo...
+                        </span>
+                      )}
+                      {authStep !== 'typing_user' && typedUser && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600" title="Campo preenchido">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -638,9 +785,36 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                         type={showPass ? 'text' : 'password'}
                         value={typedPass}
                         onChange={(e) => setTypedPass(e.target.value)}
+                        onPaste={(e) => {
+                          const pasted = e.clipboardData.getData('text');
+                          if (pasted) {
+                            e.preventDefault();
+                            if (pasted.includes('\t') || pasted.includes('\n') || (modem.username && pasted.startsWith(modem.username))) {
+                              handleSmartPaste(pasted);
+                            } else {
+                              setTypedPass(pasted.trim());
+                            }
+                          }
+                        }}
                         placeholder="••••••••"
-                        className="w-full bg-slate-50 border border-slate-300 focus:border-red-500 focus:bg-white rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 transition-all outline-none"
+                        className={`w-full bg-slate-50 border rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 transition-all outline-none ${
+                          authStep === 'typing_pass'
+                            ? 'border-red-500 ring-2 ring-red-500/20 bg-red-50/30'
+                            : typedPass
+                            ? 'border-emerald-300 focus:border-red-500 focus:bg-white'
+                            : 'border-slate-300 focus:border-red-500 focus:bg-white'
+                        }`}
                       />
+                      {authStep === 'typing_pass' && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-md animate-pulse">
+                          Preenchendo...
+                        </span>
+                      )}
+                      {authStep !== 'typing_pass' && typedPass && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600" title="Campo preenchido">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </span>
+                      )}
                     </div>
                   </div>
 
