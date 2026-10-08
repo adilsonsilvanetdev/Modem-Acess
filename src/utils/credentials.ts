@@ -87,3 +87,51 @@ export function splitCredentials(raw: string, defaultUser: string = 'admin', def
     pass: cleanModemPassword(pass || defaultPass),
   };
 }
+
+/**
+ * Triggers Google Chrome native Credential Manager / Touch-to-Fill bottom sheet
+ * ("Usar a senha salva?"). When user taps "Continuar", returns the saved credentials.
+ */
+export async function triggerChromeCredentialPrompt(): Promise<{ user?: string; pass?: string } | null> {
+  if (typeof window === 'undefined' || !navigator.credentials) return null;
+  try {
+    if (typeof navigator.credentials.get === 'function') {
+      const cred: any = await navigator.credentials.get({
+        password: true,
+        mediation: 'optional',
+      } as any);
+      if (cred) {
+        return {
+          user: cred.id || cred.name || undefined,
+          pass: cred.password || undefined,
+        };
+      }
+    }
+  } catch (err) {
+    // Non-fatal: dismissed or not saved
+    console.debug('Chrome credential prompt error:', err);
+  }
+  return null;
+}
+
+/**
+ * Stores credentials into Chrome's Password Manager so Chrome
+ * can suggest and auto-fill them via Google Password Manager on next visits.
+ */
+export async function storeChromeCredential(user: string, pass: string, name?: string): Promise<boolean> {
+  if (typeof window === 'undefined' || !navigator.credentials) return false;
+  try {
+    if ((window as any).PasswordCredential && typeof navigator.credentials.store === 'function') {
+      const cred = new (window as any).PasswordCredential({
+        id: cleanModemUser(user),
+        password: cleanModemPassword(pass),
+        name: name || 'Roteador Admin',
+      });
+      await navigator.credentials.store(cred);
+      return true;
+    }
+  } catch (err) {
+    console.debug('Chrome credential store error:', err);
+  }
+  return false;
+}

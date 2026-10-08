@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { ScannedModem } from '../types';
 import { copyToClipboardSafe } from '../utils/clipboard';
-import { cleanModemPassword, cleanModemUser } from '../utils/credentials';
+import { cleanModemPassword, cleanModemUser, storeChromeCredential, triggerChromeCredentialPrompt } from '../utils/credentials';
 
 interface ModemCredentialsCardProps {
   modem: ScannedModem;
@@ -55,6 +55,11 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
     await copyToClipboardSafe(text);
     setCopiedField(fieldName);
     setTimeout(() => setCopiedField(null), 2000);
+
+    if (fieldName === 'both') {
+      storeChromeCredential(cleanUser, cleanPass, modem.brand);
+      triggerChromeCredentialPrompt();
+    }
   };
 
   const handleSave = () => {

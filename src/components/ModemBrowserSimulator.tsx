@@ -31,6 +31,12 @@ import {
 } from 'lucide-react';
 import { ScannedModem, ConnectedDevice } from '../types';
 import { copyToClipboardSafe } from '../utils/clipboard';
+import {
+  cleanModemPassword,
+  cleanModemUser,
+  storeChromeCredential,
+  triggerChromeCredentialPrompt,
+} from '../utils/credentials';
 
 interface ModemBrowserSimulatorProps {
   modem: ScannedModem;
@@ -126,12 +132,14 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   onFinishAccess,
 }) => {
   const brandTheme = getBrandTheme(modem.brand);
+  const cleanUser = cleanModemUser(modem.username);
+  const cleanPass = cleanModemPassword(modem.password);
 
   // Browser States
   const [currentUrl, setCurrentUrl] = useState<string>(`http://${modem.ip}/`);
   const [authStep, setAuthStep] = useState<'idle' | 'typing_user' | 'typing_pass' | 'submitting' | 'logged_in'>('idle');
-  const [typedUser, setTypedUser] = useState<string>(modem.username || 'admin');
-  const [typedPass, setTypedPass] = useState<string>(modem.password || 'admin');
+  const [typedUser, setTypedUser] = useState<string>(cleanUser);
+  const [typedPass, setTypedPass] = useState<string>(cleanPass);
   const [isCopiedBoth, setIsCopiedBoth] = useState<boolean>(false);
   const [isCopiedPass, setIsCopiedPass] = useState<boolean>(false);
   const [isCopiedUser, setIsCopiedUser] = useState<boolean>(false);
@@ -251,21 +259,21 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
       u = pasted.trim();
     }
 
-    if (u) setTypedUser(u);
+    if (u) setTypedUser(cleanModemUser(u));
     if (p) {
-      setTypedPass(p);
+      setTypedPass(cleanModemPassword(p));
     } else if (!typedPass) {
-      setTypedPass(modem.password || 'admin');
+      setTypedPass(cleanPass);
     }
     setAuthStep('idle');
-  }, [clearTypingTimers, modem.username, modem.password, typedPass]);
+  }, [clearTypingTimers, cleanPass, typedPass]);
 
   // Função que executa o preenchimento automático de cada campo no navegador
   const triggerAutoLogin = useCallback((customUser?: string, customPass?: string) => {
     clearTypingTimers();
 
-    const targetUser = customUser !== undefined ? customUser : (modem.username || 'admin');
-    const targetPass = customPass !== undefined ? customPass : (modem.password || 'admin');
+    const targetUser = customUser !== undefined ? cleanModemUser(customUser) : cleanUser;
+    const targetPass = customPass !== undefined ? cleanModemPassword(customPass) : cleanPass;
 
     setTypedUser('');
     setTypedPass('');
@@ -306,7 +314,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     }, userDoneTime);
 
     typingTimerRef.current.push(passStartTimer);
-  }, [clearTypingTimers, modem.username, modem.password]);
+  }, [clearTypingTimers, cleanUser, cleanPass]);
 
   // Preenche automaticamente os campos com Login e Senha ao carregar
   useEffect(() => {
@@ -321,16 +329,29 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
       }))
     );
 
+    // Preenche imediatamente com as credenciais limpas
+    setTypedUser(cleanUser);
+    setTypedPass(cleanPass);
+
+    // Salva e aciona suporte ao Google Chrome Password Manager ("Usar a senha salva?")
+    storeChromeCredential(cleanUser, cleanPass, modem.brand);
+    triggerChromeCredentialPrompt().then((res) => {
+      if (res?.pass) {
+        if (res.user) setTypedUser(cleanModemUser(res.user));
+        setTypedPass(cleanModemPassword(res.pass));
+      }
+    });
+
     // Dispara o preenchimento automático no navegador ao acessar a página
     const timer = setTimeout(() => {
-      triggerAutoLogin();
+      triggerAutoLogin(cleanUser, cleanPass);
     }, 120);
 
     return () => {
       clearTimeout(timer);
       clearTypingTimers();
     };
-  }, [modem.id, modem.ip, modem.username, modem.password, modem.wifiSsid, modem.wifiPassword, modem.brand, triggerAutoLogin, clearTypingTimers]);
+  }, [modem.id, modem.ip, cleanUser, cleanPass, modem.wifiSsid, modem.wifiPassword, modem.brand, triggerAutoLogin, clearTypingTimers]);
 
   // Se o usuário alternar para o app tendo copiado credenciais, garante o preenchimento
   useEffect(() => {
@@ -338,7 +359,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
       try {
         if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
           const text = await navigator.clipboard.readText();
-          if (text && (text.includes(modem.username) || text.includes(modem.password))) {
+          if (text && (text.includes(cleanUser) || text.includes(cleanPass))) {
             handleSmartPaste(text);
           }
         }
@@ -348,7 +369,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [modem.username, modem.password, handleSmartPaste]);
+  }, [cleanUser, cleanPass, handleSmartPaste]);
 
   // Copy to clipboard helper with iOS Safari fallback
   const copyText = async (text: string, type: 'pass' | 'user' | 'both' | 'bookmarklet') => {
@@ -362,7 +383,16 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     } else if (type === 'both') {
       setIsCopiedBoth(true);
       setTimeout(() => setIsCopiedBoth(false), 2500);
-      triggerAutoLogin(modem.username, modem.password);
+      setTypedUser(cleanUser);
+      setTypedPass(cleanPass);
+      storeChromeCredential(cleanUser, cleanPass, modem.brand);
+      triggerChromeCredentialPrompt().then((res) => {
+        if (res?.pass) {
+          if (res.user) setTypedUser(cleanModemUser(res.user));
+          setTypedPass(cleanModemPassword(res.pass));
+        }
+      });
+      triggerAutoLogin(cleanUser, cleanPass);
     } else {
       setIsCopiedBookmarklet(true);
       setTimeout(() => setIsCopiedBookmarklet(false), 2500);
@@ -374,13 +404,22 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     const rawIp = modem.ip.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
     const target = `http://${rawIp}/`;
 
-    // Auto copy Login + Senha with Tab separator (\t) so browser puts username in login field and password in password field
-    await copyToClipboardSafe(`${modem.username}\t${modem.password}`);
+    // CRITICAL FOR CHROME: Abre a aba antes do await para manter o contexto de clique do usuário
+    // e evitar que o bloqueador de pop-ups do Google Chrome silencie a abertura
+    const newTab = window.open('about:blank', '_blank');
+
+    // Auto copy Login + Senha com Tab (\t) para preencher usuário e senha nos campos certos
+    await copyToClipboardSafe(`${cleanUser}\t${cleanPass}`);
     setIsCopiedBoth(true);
     setTimeout(() => setIsCopiedBoth(false), 3000);
 
-    // Abre em nova aba
-    window.open(target, '_blank');
+    storeChromeCredential(cleanUser, cleanPass, modem.brand);
+
+    if (newTab) {
+      newTab.location.href = target;
+    } else {
+      window.open(target, '_blank');
+    }
   };
 
   const copyWifiPassword = async (passText: string) => {
@@ -593,7 +632,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
             <button
               type="button"
               onClick={async () => {
-                await copyText(`${modem.username}\t${modem.password}`, 'both');
+                await copyText(`${cleanUser}\t${cleanPass}`, 'both');
               }}
               className="w-full py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
             >
@@ -736,17 +775,39 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                   )}
                 </div>
 
-                {/* Login Inputs em Tema Claro */}
-                <div className="space-y-4">
+                {/* Login Form em Tema Claro com suporte nativo ao Chrome Password Manager e Safari Autofill */}
+                <form
+                  action="#"
+                  method="post"
+                  autoComplete="on"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setAuthStep('submitting');
+                    setTimeout(() => {
+                      setAuthStep('logged_in');
+                      setCurrentUrl(`http://${modem.ip}/main_dashboard.asp`);
+                    }, 500);
+                  }}
+                  className="space-y-4"
+                >
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    <label htmlFor="username" className="block text-xs font-bold text-slate-700 mb-1.5">
                       Nome de Usuário / Login
                     </label>
                     <div className="relative">
                       <input
+                        id="username"
+                        name="username"
                         type="text"
+                        autoComplete="username"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
                         value={typedUser}
                         onChange={(e) => setTypedUser(e.target.value)}
+                        onInput={(e: React.FormEvent<HTMLInputElement>) => {
+                          setTypedUser((e.target as HTMLInputElement).value);
+                        }}
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text');
                           if (pasted) {
@@ -777,22 +838,28 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    <label htmlFor="password" className="block text-xs font-bold text-slate-700 mb-1.5">
                       Senha de Gerenciamento Web
                     </label>
                     <div className="relative">
                       <input
+                        id="password"
+                        name="password"
                         type={showPass ? 'text' : 'password'}
+                        autoComplete="current-password"
                         value={typedPass}
                         onChange={(e) => setTypedPass(e.target.value)}
+                        onInput={(e: React.FormEvent<HTMLInputElement>) => {
+                          setTypedPass((e.target as HTMLInputElement).value);
+                        }}
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text');
                           if (pasted) {
                             e.preventDefault();
-                            if (pasted.includes('\t') || pasted.includes('\n') || (modem.username && pasted.startsWith(modem.username))) {
+                            if (pasted.includes('\t') || pasted.includes('\n') || (cleanUser && pasted.startsWith(cleanUser))) {
                               handleSmartPaste(pasted);
                             } else {
-                              setTypedPass(pasted.trim());
+                              setTypedPass(cleanModemPassword(pasted.trim()));
                             }
                           }
                         }}
@@ -820,14 +887,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
 
                   {/* Submit Button em VERMELHO */}
                   <button
-                    type="button"
-                    onClick={() => {
-                      setAuthStep('submitting');
-                      setTimeout(() => {
-                        setAuthStep('logged_in');
-                        setCurrentUrl(`http://${modem.ip}/main_dashboard.asp`);
-                      }, 500);
-                    }}
+                    type="submit"
                     className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       authStep === 'submitting'
                         ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 scale-[0.98]'
@@ -846,7 +906,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                       </>
                     )}
                   </button>
-                </div>
+                </form>
 
                 <div className="mt-5 text-center">
                   <span className="text-[11px] text-slate-500 font-mono">
