@@ -597,6 +597,39 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
               <span>{isCopiedBoth ? 'Login + Senha Copiados!' : 'Copiar Login + Senha'}</span>
             </button>
 
+            {/* Botões Individuais: Copiar Login e Copiar Senha */}
+            <div className="grid grid-cols-2 gap-2 mt-0.5">
+              <button
+                type="button"
+                onClick={async () => {
+                  await copyText(cleanUser, 'user');
+                }}
+                className="py-2.5 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
+              >
+                {isCopiedUser ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                ) : (
+                  <User className="w-3.5 h-3.5 text-slate-600" />
+                )}
+                <span>{isCopiedUser ? 'Login Copiado!' : 'Copiar Login'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  await copyText(cleanPass, 'pass');
+                }}
+                className="py-2.5 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
+              >
+                {isCopiedPass ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                ) : (
+                  <Key className="w-3.5 h-3.5 text-slate-600" />
+                )}
+                <span>{isCopiedPass ? 'Senha Copiada!' : 'Copiar Senha'}</span>
+              </button>
+            </div>
+
             <div className="flex items-center justify-between px-1 text-xs text-slate-500">
               <span className="text-[11px]">
                 {isCopiedBoth ? (

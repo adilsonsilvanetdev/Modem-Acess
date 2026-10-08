@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { ScannedModem } from '../types';
 import { copyToClipboardSafe } from '../utils/clipboard';
-import { cleanModemPassword, cleanModemUser, storeChromeCredential, triggerChromeCredentialPrompt } from '../utils/credentials';
+import { cleanModemPassword, cleanModemUser } from '../utils/credentials';
 
 interface ModemCredentialsCardProps {
   modem: ScannedModem;
@@ -55,11 +55,6 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
     await copyToClipboardSafe(text);
     setCopiedField(fieldName);
     setTimeout(() => setCopiedField(null), 2000);
-
-    if (fieldName === 'both') {
-      storeChromeCredential(cleanUser, cleanPass, modem.brand);
-      triggerChromeCredentialPrompt();
-    }
   };
 
   const handleSave = () => {
@@ -300,14 +295,9 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
         )}
       </div>
 
-      {/* Hidden standard form to trigger Chrome's Password Manager / Autofill */}
-      <form autoComplete="on" className="sr-only" aria-hidden="true">
-        <input type="text" name="username" autoComplete="username" defaultValue={cleanUser} readOnly />
-        <input type="password" name="password" autoComplete="current-password" defaultValue={cleanPass} readOnly />
-      </form>
-
-      {/* Botão Único: Copiar Login + Senha */}
-      <div className="pt-2 flex flex-col gap-2">
+      {/* Ações de Cópia e Acesso */}
+      <div className="pt-2 flex flex-col gap-2.5">
+        {/* Botão Principal: Copiar Login + Senha */}
         <button
           type="button"
           onClick={() => copyToClipboard(`${cleanUser}\t${cleanPass}`, 'both')}
@@ -321,6 +311,36 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
           <span>{copiedField === 'both' ? 'Login + Senha Copiados!' : 'Copiar Login + Senha'}</span>
         </button>
 
+        {/* Botões Individuais: Copiar Login e Copiar Senha */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => copyToClipboard(cleanUser, 'user')}
+            className="py-2.5 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
+          >
+            {copiedField === 'user' ? (
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+            ) : (
+              <User className="w-3.5 h-3.5 text-slate-600" />
+            )}
+            <span>{copiedField === 'user' ? 'Login Copiado!' : 'Copiar Login'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => copyToClipboard(cleanPass, 'pass')}
+            className="py-2.5 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
+          >
+            {copiedField === 'pass' ? (
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+            ) : (
+              <Key className="w-3.5 h-3.5 text-slate-600" />
+            )}
+            <span>{copiedField === 'pass' ? 'Senha Copiada!' : 'Copiar Senha'}</span>
+          </button>
+        </div>
+
+        {/* Botão Abrir Navegador no Modem */}
         <button
           type="button"
           onClick={onOpenBrowser}

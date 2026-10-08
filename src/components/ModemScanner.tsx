@@ -330,7 +330,7 @@ export const ModemScanner: React.FC<ModemScannerProps> = ({
           sourceImage: base64Data,
         };
 
-        setScanStatusStep(`IP ${scannedModem.ip} detectado! Abrindo página...`);
+        setScanStatusStep(`Credenciais do roteador identificadas com sucesso!`);
         setTimeout(() => {
           setIsScanning(false);
           stopLiveCamera();

@@ -85,8 +85,9 @@ export default function App() {
       setPrivacyNotification(null);
     }, 4500);
 
-    // Switch to browser simulation view so user sees auto-fill immediately!
-    setActiveTab('browser');
+    // Exibe a tela de credenciais para que o usuário veja os dados e copie se desejar;
+    // O preenchimento automático ocorrerá SOMENTE quando o usuário abrir a página do modem
+    setActiveTab('credentials');
   };
 
   const handleUpdateModem = (updated: ScannedModem) => {
