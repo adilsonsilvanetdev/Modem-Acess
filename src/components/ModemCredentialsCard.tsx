@@ -300,6 +300,12 @@ export const ModemCredentialsCard: React.FC<ModemCredentialsCardProps> = ({
         )}
       </div>
 
+      {/* Hidden standard form to trigger Chrome's Password Manager / Autofill */}
+      <form autoComplete="on" className="sr-only" aria-hidden="true">
+        <input type="text" name="username" autoComplete="username" defaultValue={cleanUser} readOnly />
+        <input type="password" name="password" autoComplete="current-password" defaultValue={cleanPass} readOnly />
+      </form>
+
       {/* Botão Único: Copiar Login + Senha */}
       <div className="pt-2 flex flex-col gap-2">
         <button

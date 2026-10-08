@@ -34,6 +34,7 @@ import { copyToClipboardSafe } from '../utils/clipboard';
 import {
   cleanModemPassword,
   cleanModemUser,
+  splitCredentials,
   storeChromeCredential,
   triggerChromeCredentialPrompt,
 } from '../utils/credentials';
@@ -229,91 +230,52 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     if (!pasted) return;
     clearTypingTimers();
 
-    let u = '';
-    let p = '';
-
-    if (pasted.includes('\t')) {
-      const parts = pasted.split('\t');
-      u = parts[0]?.trim() || '';
-      p = parts.slice(1).join('\t').trim();
-    } else if (pasted.includes('\n')) {
-      const parts = pasted.split('\n');
-      u = parts[0]?.trim() || '';
-      p = parts.slice(1).join('\n').trim();
-    } else if (pasted.includes(':') && !pasted.startsWith('http')) {
-      const parts = pasted.split(':');
-      u = parts[0]?.trim() || '';
-      p = parts.slice(1).join(':').trim();
-    } else if (modem.username && pasted.startsWith(modem.username) && pasted.length > modem.username.length) {
-      u = modem.username;
-      p = pasted.slice(modem.username.length).trim();
-    } else if (pasted.includes(' ') && !pasted.includes('\t')) {
-      const parts = pasted.trim().split(/\s+/);
-      if (parts.length >= 2) {
-        u = parts[0];
-        p = parts.slice(1).join(' ');
-      } else {
-        u = pasted.trim();
-      }
-    } else {
-      u = pasted.trim();
-    }
-
-    if (u) setTypedUser(cleanModemUser(u));
-    if (p) {
-      setTypedPass(cleanModemPassword(p));
+    const { user, pass } = splitCredentials(pasted, cleanUser, cleanPass);
+    if (user) setTypedUser(user);
+    if (pass) {
+      setTypedPass(pass);
     } else if (!typedPass) {
       setTypedPass(cleanPass);
     }
     setAuthStep('idle');
-  }, [clearTypingTimers, cleanPass, typedPass]);
+  }, [clearTypingTimers, cleanUser, cleanPass, typedPass]);
 
-  // Função que executa o preenchimento automático de cada campo no navegador
+  // Função para lidar com colagem/digitação no campo usuário (inclusive no Chrome/Gboard onde não há evento onPaste separado)
+  const handleUserInputChange = useCallback((val: string) => {
+    if (
+      val.includes('\t') ||
+      val.includes('\n') ||
+      (val.includes(':') && !val.startsWith('http')) ||
+      (cleanUser && val.toLowerCase().startsWith(cleanUser.toLowerCase()) && val.length > cleanUser.length) ||
+      (val.includes(' ') && val.trim().split(/\s+/).length >= 2)
+    ) {
+      handleSmartPaste(val);
+    } else {
+      setTypedUser(val);
+    }
+  }, [cleanUser, handleSmartPaste]);
+
+  // Função para lidar com colagem/digitação no campo senha (remove pontuação e pontos)
+  const handlePassInputChange = useCallback((val: string) => {
+    if (
+      val.includes('\t') ||
+      val.includes('\n') ||
+      (cleanUser && val.toLowerCase().startsWith(cleanUser.toLowerCase()) && val.length > cleanUser.length)
+    ) {
+      handleSmartPaste(val);
+    } else {
+      setTypedPass(cleanModemPassword(val));
+    }
+  }, [cleanUser, handleSmartPaste]);
+
+  // Preenche diretamente os campos com Login e Senha de forma imediata (sem loops de digitação que travam o Chrome)
   const triggerAutoLogin = useCallback((customUser?: string, customPass?: string) => {
     clearTypingTimers();
-
     const targetUser = customUser !== undefined ? cleanModemUser(customUser) : cleanUser;
     const targetPass = customPass !== undefined ? cleanModemPassword(customPass) : cleanPass;
-
-    setTypedUser('');
-    setTypedPass('');
-    setAuthStep('typing_user');
-
-    // Preenche campo Usuário
-    const uLen = targetUser.length;
-    const userSpeed = Math.max(20, Math.min(50, Math.floor(350 / (uLen || 1))));
-
-    for (let i = 1; i <= uLen; i++) {
-      const timer = setTimeout(() => {
-        setTypedUser(targetUser.slice(0, i));
-      }, i * userSpeed);
-      typingTimerRef.current.push(timer);
-    }
-
-    // Após terminar o Usuário, preenche a Senha no seu campo correto
-    const userDoneTime = (uLen + 1) * userSpeed + 120;
-    const passStartTimer = setTimeout(() => {
-      setAuthStep('typing_pass');
-      const pLen = targetPass.length;
-      const passSpeed = Math.max(20, Math.min(50, Math.floor(350 / (pLen || 1))));
-
-      for (let j = 1; j <= pLen; j++) {
-        const timer = setTimeout(() => {
-          setTypedPass(targetPass.slice(0, j));
-        }, j * passSpeed);
-        typingTimerRef.current.push(timer);
-      }
-
-      const passDoneTime = (pLen + 1) * passSpeed + 80;
-      const finishTimer = setTimeout(() => {
-        setTypedUser(targetUser);
-        setTypedPass(targetPass);
-        setAuthStep('idle');
-      }, passDoneTime);
-      typingTimerRef.current.push(finishTimer);
-    }, userDoneTime);
-
-    typingTimerRef.current.push(passStartTimer);
+    setTypedUser(targetUser);
+    setTypedPass(targetPass);
+    setAuthStep('idle');
   }, [clearTypingTimers, cleanUser, cleanPass]);
 
   // Preenche automaticamente os campos com Login e Senha ao carregar
@@ -332,6 +294,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     // Preenche imediatamente com as credenciais limpas
     setTypedUser(cleanUser);
     setTypedPass(cleanPass);
+    setAuthStep('idle');
 
     // Salva e aciona suporte ao Google Chrome Password Manager ("Usar a senha salva?")
     storeChromeCredential(cleanUser, cleanPass, modem.brand);
@@ -341,17 +304,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
         setTypedPass(cleanModemPassword(res.pass));
       }
     });
-
-    // Dispara o preenchimento automático no navegador ao acessar a página
-    const timer = setTimeout(() => {
-      triggerAutoLogin(cleanUser, cleanPass);
-    }, 120);
-
-    return () => {
-      clearTimeout(timer);
-      clearTypingTimers();
-    };
-  }, [modem.id, modem.ip, cleanUser, cleanPass, modem.wifiSsid, modem.wifiPassword, modem.brand, triggerAutoLogin, clearTypingTimers]);
+  }, [modem.id, modem.ip, cleanUser, cleanPass, modem.wifiSsid, modem.wifiPassword, modem.brand]);
 
   // Se o usuário alternar para o app tendo copiado credenciais, garante o preenchimento
   useEffect(() => {
@@ -804,9 +757,9 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                         autoCorrect="off"
                         spellCheck={false}
                         value={typedUser}
-                        onChange={(e) => setTypedUser(e.target.value)}
+                        onChange={(e) => handleUserInputChange(e.target.value)}
                         onInput={(e: React.FormEvent<HTMLInputElement>) => {
-                          setTypedUser((e.target as HTMLInputElement).value);
+                          handleUserInputChange((e.target as HTMLInputElement).value);
                         }}
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text');
@@ -848,9 +801,9 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                         type={showPass ? 'text' : 'password'}
                         autoComplete="current-password"
                         value={typedPass}
-                        onChange={(e) => setTypedPass(e.target.value)}
+                        onChange={(e) => handlePassInputChange(e.target.value)}
                         onInput={(e: React.FormEvent<HTMLInputElement>) => {
-                          setTypedPass((e.target as HTMLInputElement).value);
+                          handlePassInputChange((e.target as HTMLInputElement).value);
                         }}
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text');
