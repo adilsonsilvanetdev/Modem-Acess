@@ -231,29 +231,29 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     clearTypingTimers();
 
     const { user, pass } = splitCredentials(pasted, cleanUser, cleanPass);
-    if (user) setTypedUser(user);
-    if (pass) {
-      setTypedPass(pass);
-    } else if (!typedPass) {
-      setTypedPass(cleanPass);
-    }
+    const resolvedUser = cleanModemUser(user, cleanPass);
+    const resolvedPass = cleanModemPassword(pass || cleanPass);
+
+    setTypedUser(resolvedUser);
+    setTypedPass(resolvedPass);
     setAuthStep('idle');
-  }, [clearTypingTimers, cleanUser, cleanPass, typedPass]);
+  }, [clearTypingTimers, cleanUser, cleanPass]);
 
   // Função para lidar com colagem/digitação no campo usuário (inclusive no Chrome/Gboard onde não há evento onPaste separado)
   const handleUserInputChange = useCallback((val: string) => {
     if (
       val.includes('\t') ||
       val.includes('\n') ||
+      val.includes(' ') ||
+      (cleanPass && val.includes(cleanPass)) ||
       (val.includes(':') && !val.startsWith('http')) ||
-      (cleanUser && val.toLowerCase().startsWith(cleanUser.toLowerCase()) && val.length > cleanUser.length) ||
-      (val.includes(' ') && val.trim().split(/\s+/).length >= 2)
+      (cleanUser && val.toLowerCase().startsWith(cleanUser.toLowerCase()) && val.length > cleanUser.length)
     ) {
       handleSmartPaste(val);
     } else {
-      setTypedUser(val);
+      setTypedUser(cleanModemUser(val, cleanPass));
     }
-  }, [cleanUser, handleSmartPaste]);
+  }, [cleanUser, cleanPass, handleSmartPaste]);
 
   // Função para lidar com colagem/digitação no campo senha (remove pontuação e pontos)
   const handlePassInputChange = useCallback((val: string) => {
@@ -271,7 +271,7 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   // Preenche diretamente os campos com Login e Senha de forma imediata (sem loops de digitação que travam o Chrome)
   const triggerAutoLogin = useCallback((customUser?: string, customPass?: string) => {
     clearTypingTimers();
-    const targetUser = customUser !== undefined ? cleanModemUser(customUser) : cleanUser;
+    const targetUser = customUser !== undefined ? cleanModemUser(customUser, cleanPass) : cleanUser;
     const targetPass = customPass !== undefined ? cleanModemPassword(customPass) : cleanPass;
     setTypedUser(targetUser);
     setTypedPass(targetPass);
@@ -300,7 +300,10 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     storeChromeCredential(cleanUser, cleanPass, modem.brand);
     triggerChromeCredentialPrompt().then((res) => {
       if (res?.pass) {
-        if (res.user) setTypedUser(cleanModemUser(res.user));
+        if (res.user) {
+          const split = splitCredentials(res.user, cleanUser, cleanPass);
+          setTypedUser(cleanModemUser(split.user, cleanPass));
+        }
         setTypedPass(cleanModemPassword(res.pass));
       }
     });
@@ -343,7 +346,10 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
       storeChromeCredential(cleanUser, cleanPass, modem.brand);
       triggerChromeCredentialPrompt().then((res) => {
         if (res?.pass) {
-          if (res.user) setTypedUser(cleanModemUser(res.user));
+          if (res.user) {
+            const split = splitCredentials(res.user, cleanUser, cleanPass);
+            setTypedUser(cleanModemUser(split.user, cleanPass));
+          }
           setTypedPass(cleanModemPassword(res.pass));
         }
       });
@@ -793,9 +799,6 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                         spellCheck={false}
                         value={typedUser}
                         onChange={(e) => handleUserInputChange(e.target.value)}
-                        onInput={(e: React.FormEvent<HTMLInputElement>) => {
-                          handleUserInputChange((e.target as HTMLInputElement).value);
-                        }}
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text');
                           if (pasted) {
@@ -837,14 +840,11 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
                         autoComplete="current-password"
                         value={typedPass}
                         onChange={(e) => handlePassInputChange(e.target.value)}
-                        onInput={(e: React.FormEvent<HTMLInputElement>) => {
-                          handlePassInputChange((e.target as HTMLInputElement).value);
-                        }}
                         onPaste={(e) => {
                           const pasted = e.clipboardData.getData('text');
                           if (pasted) {
                             e.preventDefault();
-                            if (pasted.includes('\t') || pasted.includes('\n') || (cleanUser && pasted.startsWith(cleanUser))) {
+                            if (pasted.includes('\t') || pasted.includes('\n') || pasted.includes(' ') || (cleanUser && pasted.startsWith(cleanUser))) {
                               handleSmartPaste(pasted);
                             } else {
                               setTypedPass(cleanModemPassword(pasted.trim()));

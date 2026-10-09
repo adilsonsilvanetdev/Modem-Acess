@@ -23,15 +23,35 @@ export function cleanModemPassword(raw: string | undefined | null): string {
   return pass.trim() || 'admin';
 }
 
-export function cleanModemUser(raw: string | undefined | null): string {
+export function cleanModemUser(raw: string | undefined | null, knownPassword?: string): string {
   if (!raw) return 'admin';
   let user = String(raw).trim();
+
+  // If user contains tab, newline, or separator, take only first part
+  if (user.includes('\t')) user = user.split('\t')[0].trim();
+  if (user.includes('\n')) user = user.split('\n')[0].trim();
 
   // Remove wrapping quotes or brackets
   user = user.replace(/^["'`([{<]+|["'`)\]}>]+$/g, '');
 
   // Strip label prefixes: "usuario:", "user:", "login:", "username:"
   user = user.replace(/^(?:usuario|usuário|user|login|username)\s*[:=-]?\s*/i, '');
+
+  // If known password is provided, remove it from username if present
+  if (knownPassword) {
+    const p = String(knownPassword).trim();
+    if (p && user.includes(p)) {
+      user = user.replace(p, '').trim();
+    }
+  }
+
+  // If user contains spaces (e.g. "admin 123456" in Chrome), take the first token
+  if (user.includes(' ')) {
+    const tokens = user.split(/\s+/).filter(Boolean);
+    if (tokens.length >= 2) {
+      user = tokens[0].trim();
+    }
+  }
 
   // Remove trailing and leading punctuation
   user = user.replace(/^[.,:;!?_~^`-]+|[.,:;!?_~^`-]+$/g, '');
@@ -45,10 +65,13 @@ export function cleanModemUser(raw: string | undefined | null): string {
  */
 export function splitCredentials(raw: string, defaultUser: string = 'admin', defaultPass: string = 'admin'): { user: string; pass: string } {
   if (!raw) {
-    return { user: cleanModemUser(defaultUser), pass: cleanModemPassword(defaultPass) };
+    return { user: cleanModemUser(defaultUser, defaultPass), pass: cleanModemPassword(defaultPass) };
   }
 
   const str = String(raw).trim();
+  const cleanP = cleanModemPassword(defaultPass);
+  const cleanU = cleanModemUser(defaultUser, defaultPass);
+
   let user = '';
   let pass = '';
 
@@ -64,26 +87,37 @@ export function splitCredentials(raw: string, defaultUser: string = 'admin', def
     const parts = str.split(':');
     user = parts[0]?.trim() || '';
     pass = parts.slice(1).join(':').trim();
-  } else {
-    const normUser = cleanModemUser(defaultUser);
-    if (normUser && str.toLowerCase().startsWith(normUser.toLowerCase()) && str.length > normUser.length) {
-      user = normUser;
-      pass = str.slice(normUser.length).trim();
-    } else if (str.includes(' ') && !str.includes('\t')) {
-      const parts = str.split(/\s+/);
-      if (parts.length >= 2) {
-        user = parts[0];
-        pass = parts.slice(1).join(' ');
-      } else {
-        user = str;
-      }
+  } else if (cleanP && str.endsWith(cleanP) && str.length > cleanP.length) {
+    user = str.slice(0, str.length - cleanP.length).trim();
+    pass = cleanP;
+  } else if (cleanP && str.includes(cleanP) && str.length > cleanP.length) {
+    user = str.replace(cleanP, '').trim();
+    pass = cleanP;
+  } else if (cleanU && str.toLowerCase().startsWith(cleanU.toLowerCase()) && str.length > cleanU.length) {
+    user = cleanU;
+    pass = str.slice(cleanU.length).trim();
+  } else if (str.includes(' ')) {
+    const parts = str.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      user = parts[0];
+      pass = parts.slice(1).join(' ');
     } else {
       user = str;
     }
+  } else {
+    user = str;
+  }
+
+  // Ensure password is NEVER part of username
+  if (pass && user.includes(pass)) {
+    user = user.replace(pass, '').trim();
+  }
+  if (cleanP && user.includes(cleanP)) {
+    user = user.replace(cleanP, '').trim();
   }
 
   return {
-    user: cleanModemUser(user || defaultUser),
+    user: cleanModemUser(user || defaultUser, pass || defaultPass),
     pass: cleanModemPassword(pass || defaultPass),
   };
 }
