@@ -330,9 +330,11 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     if (type === 'pass') {
       setIsCopiedPass(true);
       setTimeout(() => setIsCopiedPass(false), 2500);
+      setTypedPass(cleanPass);
     } else if (type === 'user') {
       setIsCopiedUser(true);
       setTimeout(() => setIsCopiedUser(false), 2500);
+      setTypedUser(cleanUser);
     } else if (type === 'both') {
       setIsCopiedBoth(true);
       setTimeout(() => setIsCopiedBoth(false), 2500);
