@@ -169,3 +169,28 @@ export async function storeChromeCredential(user: string, pass: string, name?: s
   }
   return false;
 }
+
+/**
+ * Detects whether the current browser is Google Chrome, Safari, or another browser.
+ */
+export function detectBrowserType(): 'chrome' | 'safari' | 'other' {
+  if (typeof navigator === 'undefined') return 'chrome';
+  const ua = navigator.userAgent.toLowerCase();
+  // Chrome on iOS contains 'crios', Chrome on Android/Desktop contains 'chrome'
+  const isChrome = (ua.includes('chrome') || ua.includes('crios')) && !ua.includes('edg') && !ua.includes('opr');
+  if (isChrome) return 'chrome';
+  const isSafari = (ua.includes('safari') || ua.includes('iphone') || ua.includes('ipad')) && !ua.includes('chrome') && !ua.includes('crios');
+  if (isSafari) return 'safari';
+  return 'other';
+}
+
+/**
+ * Generates a one-touch Bookmarklet script to auto-fill router credentials
+ * on Chrome (mobile and desktop) even before saving in Google Password Manager.
+ */
+export function generateRouterBookmarklet(user: string, pass: string): string {
+  const cleanU = cleanModemUser(user, pass);
+  const cleanP = cleanModemPassword(pass);
+  return `javascript:(function(){var u=${JSON.stringify(cleanU)},p=${JSON.stringify(cleanP)};function setVal(el,v){if(!el)return false;try{el.focus();var s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');if(s&&s.set){s.set.call(el,v);}else{el.value=v;}el.dispatchEvent(new Event('input',{bubbles:true,cancelable:true}));el.dispatchEvent(new Event('change',{bubbles:true,cancelable:true}));el.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,cancelable:true,key:v.slice(-1)}));el.blur();return true;}catch(e){el.value=v;return true;}}var uIn=document.querySelector('input[type="text"]:not([style*="display: none"]),input[name*="user" i],input[name*="login" i],input[id*="user" i],input[id*="login" i],#username,#login,#txt_Username');var pIn=document.querySelector('input[type="password"],input[name*="pass" i],input[name*="pwd" i],input[id*="pass" i],input[id*="pwd" i],#password,#txt_Password');if(uIn)setVal(uIn,u);if(pIn)setVal(pIn,p);var b=document.createElement('div');b.style='position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:12px 20px;border-radius:12px;font-family:sans-serif;font-size:14px;font-weight:bold;z-index:9999999;box-shadow:0 8px 30px rgba(0,0,0,0.3);';b.innerText='✓ Login e Senha preenchidos com sucesso!';document.body.appendChild(b);setTimeout(function(){b.remove();},3500);})();`;
+}
+
