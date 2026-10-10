@@ -34,13 +34,10 @@ import { copyToClipboardSafe } from '../utils/clipboard';
 import {
   cleanModemPassword,
   cleanModemUser,
-  detectBrowserType,
-  generateRouterBookmarklet,
   splitCredentials,
   storeChromeCredential,
   triggerChromeCredentialPrompt,
 } from '../utils/credentials';
-import { ChromeAutoFillGuideModal } from './ChromeAutoFillGuideModal';
 
 interface ModemBrowserSimulatorProps {
   modem: ScannedModem;
@@ -151,13 +148,6 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
   const [isCopiedBookmarklet, setIsCopiedBookmarklet] = useState<boolean>(false);
   const [showPass, setShowPass] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'wifi' | 'devices' | 'tools'>('dashboard');
-
-  // Modo de Navegador: Google Chrome vs Safari
-  const [browserMode, setBrowserMode] = useState<'chrome' | 'safari'>(() => {
-    return detectBrowserType() === 'safari' ? 'safari' : 'chrome';
-  });
-  const [sequentialStep, setSequentialStep] = useState<'login' | 'pass'>('login');
-  const [showChromeGuide, setShowChromeGuide] = useState<boolean>(false);
 
   // Router interactive state
   const [wifiSsid, setWifiSsid] = useState<string>(modem.wifiSsid || `${modem.brand.split(' ')[0]}_Home_5G`);
@@ -344,12 +334,10 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
       setIsCopiedPass(true);
       setTimeout(() => setIsCopiedPass(false), 2500);
       setTypedPass(cleanPass);
-      setSequentialStep('login');
     } else if (type === 'user') {
       setIsCopiedUser(true);
       setTimeout(() => setIsCopiedUser(false), 2500);
       setTypedUser(cleanUser);
-      setSequentialStep('pass');
     } else if (type === 'both') {
       setIsCopiedBoth(true);
       setTimeout(() => setIsCopiedBoth(false), 2500);
@@ -369,14 +357,6 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
     } else {
       setIsCopiedBookmarklet(true);
       setTimeout(() => setIsCopiedBookmarklet(false), 2500);
-    }
-  };
-
-  const handleSequentialCopy = async () => {
-    if (sequentialStep === 'login') {
-      await copyText(cleanUser, 'user');
-    } else {
-      await copyText(cleanPass, 'pass');
     }
   };
 
@@ -597,191 +577,67 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
           </div>
         )}
 
-        {/* Seletor de Navegador: Modo Google Chrome vs Modo Safari */}
-        <div className="bg-slate-100 p-1 rounded-2xl flex items-center gap-1 border border-slate-200">
-          <button
-            type="button"
-            onClick={() => setBrowserMode('chrome')}
-            className={`flex-1 py-1.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              browserMode === 'chrome'
-                ? 'bg-white text-red-700 shadow-xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Globe className="w-3.5 h-3.5 text-red-600" />
-            <span>Modo Google Chrome</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setBrowserMode('safari')}
-            className={`flex-1 py-1.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              browserMode === 'safari'
-                ? 'bg-white text-blue-700 shadow-xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5 text-blue-600" />
-            <span>Modo Safari</span>
-          </button>
-        </div>
-
-        {/* Dica Informativa Google Chrome */}
-        {browserMode === 'chrome' && (
-          <div className="bg-red-50/70 border border-red-200 rounded-2xl p-3 flex flex-col gap-1.5 text-xs text-red-900">
-            <div className="flex items-center justify-between">
-              <span className="font-extrabold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-red-600" />
-                Dica Google Chrome Móvel:
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowChromeGuide(true)}
-                className="text-[11px] text-red-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <HelpCircle className="w-3 h-3" />
-                <span>Por que o Chrome cola junto?</span>
-              </button>
-            </div>
-            <p className="text-[11px] text-red-800">
-              No Chrome móvel, colar tudo junto cola no campo de Login. Use a cópia separada abaixo no 1º acesso!
-            </p>
-          </div>
-        )}
-
         {/* Primary Action Buttons in VIBRANT RED */}
         <div className="pt-1 border-t border-slate-100 flex flex-col gap-2.5">
-          {/* Botão de Abertura Externa */}
           <button
             type="button"
             onClick={openInExternalBrowser}
             className="w-full py-3.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl text-sm font-extrabold flex items-center justify-center gap-2 shadow-md shadow-red-600/25 transition-all cursor-pointer active:scale-98"
           >
             <ExternalLink className="w-4 h-4" />
-            <span>Abrir no {browserMode === 'chrome' ? 'Google Chrome' : 'Safari'}</span>
+            <span>Abrir no Chrome / Safari</span>
           </button>
 
-          {/* Botões Específicos por Modo */}
-          {browserMode === 'chrome' ? (
-            <div className="flex flex-col gap-2">
-              {/* Botões Individuais Grandes para Chrome: 1. Copiar Login e 2. Copiar Senha */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await copyText(cleanUser, 'user');
-                  }}
-                  className={`py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98 border ${
-                    isCopiedUser
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-300'
-                  }`}
-                >
-                  {isCopiedUser ? (
-                    <Check className="w-4 h-4 text-white" />
-                  ) : (
-                    <User className="w-4 h-4 text-red-600" />
-                  )}
-                  <span>{isCopiedUser ? 'Login Copiado!' : '1. Copiar Login'}</span>
-                </button>
+          {/* Botão Único: Copiar Login + Senha */}
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                await copyText(`${cleanUser}\t${cleanPass}`, 'both');
+              }}
+              className="w-full py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
+            >
+              {isCopiedBoth ? (
+                <Check className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <Copy className="w-4 h-4 text-red-600" />
+              )}
+              <span>{isCopiedBoth ? 'Login + Senha Copiados!' : 'Copiar Login + Senha'}</span>
+            </button>
 
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await copyText(cleanPass, 'pass');
-                  }}
-                  className={`py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98 border ${
-                    isCopiedPass
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-300'
-                  }`}
-                >
-                  {isCopiedPass ? (
-                    <Check className="w-4 h-4 text-white" />
-                  ) : (
-                    <Key className="w-4 h-4 text-red-600" />
-                  )}
-                  <span>{isCopiedPass ? 'Senha Copiada!' : '2. Copiar Senha'}</span>
-                </button>
-              </div>
-
-              {/* Botão Cópia Sequencial Passo a Passo */}
-              <button
-                type="button"
-                onClick={handleSequentialCopy}
-                className="w-full py-2.5 px-3 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 flex items-center justify-center gap-2 cursor-pointer shadow-2xs transition-all"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>
-                  {sequentialStep === 'login'
-                    ? 'Passo a Passo: Toque para Copiar Login'
-                    : 'Passo a Passo: Toque para Copiar Senha'}
-                </span>
-              </button>
-
-              {/* Copiar Ambos Opcional */}
+            {/* Botões Individuais: Copiar Login e Copiar Senha */}
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={async () => {
-                  await copyText(`${cleanUser}\t${cleanPass}`, 'both');
+                  await copyText(cleanUser, 'user');
                 }}
-                className="w-full py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200"
+                className="py-2.5 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
               >
-                <Copy className="w-3.5 h-3.5 text-slate-400" />
-                <span>{isCopiedBoth ? 'Copiados com Tab' : 'Copiar Ambos Juntos (Login + Senha)'}</span>
-              </button>
-            </div>
-          ) : (
-            /* Modo Safari: Botão Único com Tabs + Botões Auxiliares */
-            <div className="flex flex-col gap-1.5">
-              <button
-                type="button"
-                onClick={async () => {
-                  await copyText(`${cleanUser}\t${cleanPass}`, 'both');
-                }}
-                className="w-full py-3.5 px-4 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 border-2 border-red-200 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-98"
-              >
-                {isCopiedBoth ? (
-                  <Check className="w-4 h-4 text-emerald-600" />
+                {isCopiedUser ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
                 ) : (
-                  <Copy className="w-4 h-4 text-red-600" />
+                  <User className="w-3.5 h-3.5 text-slate-600" />
                 )}
-                <span>{isCopiedBoth ? 'Login + Senha Copiados!' : 'Copiar Login + Senha (Safari)'}</span>
+                <span>{isCopiedUser ? 'Login Copiado!' : 'Copiar Login'}</span>
               </button>
 
-              <div className="grid grid-cols-2 gap-2 mt-0.5">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await copyText(cleanUser, 'user');
-                  }}
-                  className="py-2.5 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                >
-                  {isCopiedUser ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  ) : (
-                    <User className="w-3.5 h-3.5 text-slate-600" />
-                  )}
-                  <span>{isCopiedUser ? 'Login Copiado!' : 'Copiar Login'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await copyText(cleanPass, 'pass');
-                  }}
-                  className="py-2.5 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                >
-                  {isCopiedPass ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  ) : (
-                    <Key className="w-3.5 h-3.5 text-slate-600" />
-                  )}
-                  <span>{isCopiedPass ? 'Senha Copiada!' : 'Copiar Senha'}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  await copyText(cleanPass, 'pass');
+                }}
+                className="py-2.5 px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-98"
+              >
+                {isCopiedPass ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                ) : (
+                  <Key className="w-3.5 h-3.5 text-slate-600" />
+                )}
+                <span>{isCopiedPass ? 'Senha Copiada!' : 'Copiar Senha'}</span>
+              </button>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Botão Finalizar Acesso e Limpar Dados para Novo Acesso */}
@@ -1438,15 +1294,6 @@ export const ModemBrowserSimulator: React.FC<ModemBrowserSimulatorProps> = ({
           </div>
         </div>
       )}
-
-      {/* Modal Específico do Google Chrome */}
-      <ChromeAutoFillGuideModal
-        isOpen={showChromeGuide}
-        onClose={() => setShowChromeGuide(false)}
-        username={cleanUser}
-        password={cleanPass}
-        ip={modem.ip}
-      />
     </div>
   );
 };
